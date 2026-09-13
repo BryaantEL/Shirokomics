@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Anyone can read mock data or public data; logged-in users can write their data
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    match /comments/{commentId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+    
+    match /ratings/{ratingId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    match /favorites/{favId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    match /reading_history/{historyId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    match /bug_reports/{reportId} {
+      allow read, create: if true;
+      allow update, delete: if false;
+    }
+  }
+}

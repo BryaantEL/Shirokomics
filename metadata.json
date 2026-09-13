@@ -1,0 +1,6 @@
+{
+  "name": "Shiroko Comics",
+  "description": "Platform pembaca komik anime dan manga modern, elegan, dan interaktif yang dioptimalkan untuk perangkat mobile.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
