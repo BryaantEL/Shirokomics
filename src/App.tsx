@@ -64,6 +64,8 @@ export default function App() {
   const [readerTheme, setReaderTheme] = useState<'dark' | 'light'>('dark');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+  const [readerProgress, setReaderProgress] = useState<number>(0);
+  const [readerControlsVisible, setReaderControlsVisible] = useState<boolean>(true);
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -124,6 +126,53 @@ export default function App() {
     );
     return () => unsubscribe();
   }, [currentUser]);
+
+  // Reader UX: progress, auto-hide controls, and local resume position.
+  useEffect(() => {
+    if (!selectedComicId) return;
+
+    let hideTimer: ReturnType<typeof setTimeout> | undefined;
+    const storageKey = `shiroko-reader:${selectedComicId}:${selectedChapterNumber}`;
+
+    const updateReaderState = () => {
+      const doc = document.documentElement;
+      const maxScroll = Math.max(1, doc.scrollHeight - window.innerHeight);
+      const progress = Math.min(100, Math.max(0, (window.scrollY / maxScroll) * 100));
+      setReaderProgress(progress);
+
+      // Keep a lightweight local resume point without requiring a login.
+      try {
+        localStorage.setItem(storageKey, String(Math.round(window.scrollY)));
+      } catch {
+        // Ignore storage restrictions/private browsing errors.
+      }
+
+      setReaderControlsVisible(true);
+      if (hideTimer) clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => setReaderControlsVisible(false), 1800);
+    };
+
+    window.addEventListener('scroll', updateReaderState, { passive: true });
+    window.addEventListener('touchstart', updateReaderState, { passive: true });
+    window.addEventListener('mousemove', updateReaderState, { passive: true });
+    updateReaderState();
+
+    // Resume only when the saved position is meaningful; otherwise start at the top.
+    const saved = Number(localStorage.getItem(storageKey) || 0);
+    const resumeTimer = window.setTimeout(() => {
+      if (saved > 80 && window.scrollY < 20) {
+        window.scrollTo({ top: saved, behavior: 'smooth' });
+      }
+    }, 120);
+
+    return () => {
+      window.removeEventListener('scroll', updateReaderState);
+      window.removeEventListener('touchstart', updateReaderState);
+      window.removeEventListener('mousemove', updateReaderState);
+      if (hideTimer) clearTimeout(hideTimer);
+      window.clearTimeout(resumeTimer);
+    };
+  }, [selectedComicId, selectedChapterNumber]);
 
   // Record reading history in Firestore
   const recordReadingSession = async (comic: Comic, chapterNum: number) => {
@@ -378,134 +427,112 @@ export default function App() {
       {/* 2. Main Content Area with Fade-In & Slide-Up Motion Transitions */}
       <main className="flex-1">
         <AnimatePresence mode="wait">
-          {/* VIEW A: DETAIL / READER PAGE */}
+          {/* VIEW A: DETAIL / WEBTOON READER */}
           {selectedComicId && activeComic ? (
             <motion.div
-              key={`reader-${selectedComicId}`}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.28, ease: 'easeOut' }}
+              key={`reader-${selectedComicId}-${selectedChapterNumber}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
               id="comic-reader-view"
-              className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-8"
+              className={`min-h-screen ${readerTheme === 'light' ? 'bg-stone-100 text-slate-950' : 'bg-black text-white'}`}
             >
-              {/* Navigasi Kembali & Switch Mode Baca */}
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <button
-                  id="btn-back-to-comics"
-                  onClick={() => setSelectedComicId(null)}
-                  className="inline-flex items-center gap-2 text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors cursor-pointer bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>Kembali ke Daftar Komik</span>
-                </button>
-
-                <div className="flex items-center gap-3">
-                  {/* Switch Mode Baca (Terang / Gelap) */}
-                  <div className="inline-flex items-center p-1 bg-slate-900 border border-slate-800 rounded-xl shadow-inner">
-                    <button
-                      id="btn-reader-mode-dark"
-                      onClick={() => setReaderTheme('dark')}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                        readerTheme === 'dark'
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                      title="Mode Malam / Gelap (Nyaman di mata saat redup)"
-                    >
-                      <Moon className="w-3.5 h-3.5" />
-                      <span>Gelap</span>
-                    </button>
-                    <button
-                      id="btn-reader-mode-light"
-                      onClick={() => setReaderTheme('light')}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                        readerTheme === 'light'
-                          ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                      title="Mode Siang / Terang (Jelas dan kontras)"
-                    >
-                      <Sun className="w-3.5 h-3.5" />
-                      <span>Terang</span>
-                    </button>
-                  </div>
-
-                  <span className="text-xs text-slate-400 hidden sm:inline">
-                    Tahun Rilis: <strong className="text-slate-200">{activeComic.releaseYear}</strong>
-                  </span>
-                </div>
+              {/* Thin reading progress indicator */}
+              <div className="fixed top-0 left-0 right-0 z-[70] h-0.5 bg-white/5 pointer-events-none">
+                <div
+                  className="h-full bg-blue-500 transition-[width] duration-150"
+                  style={{ width: `${readerProgress}%` }}
+                />
               </div>
 
-            {/* Comic Header Banner & Info */}
-            <div 
-              id="comic-detail-card"
-              className="bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl"
-            >
-              <div className="relative h-44 sm:h-60 w-full overflow-hidden bg-slate-950">
-                <img
-                  src={activeComic.bannerImageUrl}
-                  alt={activeComic.title}
-                  className="w-full h-full object-cover opacity-35 filter blur-[1px]"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/60 to-transparent" />
-              </div>
+              {/* Immersive reader controls. They fade while scrolling, like a dedicated reader. */}
+              <div
+                className={`fixed top-0 left-0 right-0 z-[60] transition-all duration-300 ${
+                  readerControlsVisible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
+                }`}
+              >
+                <div className="bg-black/75 backdrop-blur-xl border-b border-white/10 shadow-2xl">
+                  <div className="max-w-5xl mx-auto h-14 px-3 sm:px-5 flex items-center justify-between gap-3">
+                    <button
+                      id="btn-back-to-comics"
+                      onClick={() => setSelectedComicId(null)}
+                      className="inline-flex items-center gap-2 min-w-0 text-sm font-semibold text-white/90 hover:text-white px-2 py-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
+                    >
+                      <ArrowLeft className="w-4 h-4 shrink-0" />
+                      <span className="truncate hidden sm:inline">{activeComic.title}</span>
+                      <span className="truncate sm:hidden">Kembali</span>
+                    </button>
 
-              <div className="relative px-6 sm:px-8 pb-8 -mt-20 sm:-mt-24 flex flex-col sm:flex-row gap-6">
-                <img
-                  src={activeComic.coverImageUrl}
-                  alt={activeComic.title}
-                  className="w-32 sm:w-44 h-48 sm:h-64 object-cover rounded-2xl border-2 border-blue-500/50 shadow-2xl mx-auto sm:mx-0 shrink-0"
-                />
-
-                <div className="flex-1 space-y-3 pt-2 text-center sm:text-left">
-                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-                    {activeComic.genre.map((g) => (
-                      <span
-                        key={g}
-                        className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-blue-950 border border-blue-800/60 text-blue-300"
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        id="btn-prev-chapter-top"
+                        disabled={selectedChapterNumber <= 1}
+                        onClick={() => {
+                          const next = Math.max(1, selectedChapterNumber - 1);
+                          setSelectedChapterNumber(next);
+                          recordReadingSession(activeComic, next);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="p-2 rounded-xl text-white/80 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                        aria-label="Bab sebelumnya"
+                        title="Bab sebelumnya"
                       >
-                        {g}
-                      </span>
-                    ))}
-                    <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-800 text-slate-300">
-                      {activeComic.status}
-                    </span>
-                    <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-indigo-950 text-indigo-300 border border-indigo-800/40">
-                      Kategori: {activeComic.category === 'oldest' ? 'Klasik (Oldest)' : activeComic.category === 'newest' ? 'Terbaru (Newest)' : 'Populer'}
-                    </span>
+                        ←
+                      </button>
+
+                      <button
+                        id="btn-chapter-selector-reader"
+                        onClick={() => document.getElementById('reader-chapter-menu')?.classList.toggle('hidden')}
+                        className="max-w-[150px] sm:max-w-[220px] px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-xs font-bold text-white truncate cursor-pointer"
+                        title="Pilih bab"
+                      >
+                        Bab {selectedChapterNumber} · {activeChapter?.title || ''}
+                      </button>
+
+                      <button
+                        id="btn-next-chapter-top"
+                        disabled={selectedChapterNumber >= activeComic.chapters.length}
+                        onClick={() => {
+                          const next = Math.min(activeComic.chapters.length, selectedChapterNumber + 1);
+                          setSelectedChapterNumber(next);
+                          recordReadingSession(activeComic, next);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="p-2 rounded-xl text-white/80 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                        aria-label="Bab berikutnya"
+                        title="Bab berikutnya"
+                      >
+                        →
+                      </button>
+
+                      <button
+                        id="btn-reader-theme"
+                        onClick={() => setReaderTheme(readerTheme === 'dark' ? 'light' : 'dark')}
+                        className="p-2 rounded-xl text-white/80 hover:text-white hover:bg-white/10 cursor-pointer"
+                        aria-label="Ganti tema reader"
+                        title="Ganti tema"
+                      >
+                        {readerTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </div>
 
-                  <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                    {activeComic.title}
-                  </h1>
-
-                  <p className="text-xs text-slate-400">
-                    Karya:{' '}
-                    <strong className="text-slate-200">{activeComic.author}</strong> •{' '}
-                    {activeComic.views.toLocaleString('id-ID')} Pembaca
-                  </p>
-
-                  <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-2xl">
-                    {activeComic.description}
-                  </p>
-
-                  {/* Chapter Selector Buttons */}
-                  <div className="pt-2">
-                    <span className="text-xs font-semibold text-slate-400 block mb-2">Pilih Bab:</span>
-                    <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
+                  <div id="reader-chapter-menu" className="hidden border-t border-white/10 bg-black/90">
+                    <div className="max-w-5xl mx-auto px-3 sm:px-5 py-3 flex gap-2 overflow-x-auto">
                       {activeComic.chapters.map((ch) => (
                         <button
                           key={ch.id}
-                          id={`btn-chapter-${ch.chapterNumber}`}
                           onClick={() => {
                             setSelectedChapterNumber(ch.chapterNumber);
                             recordReadingSession(activeComic, ch.chapterNumber);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                            document.getElementById('reader-chapter-menu')?.classList.add('hidden');
                           }}
-                          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                          className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
                             selectedChapterNumber === ch.chapterNumber
-                              ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/40'
-                              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-white/10 text-white/70 hover:bg-white/15 hover:text-white'
                           }`}
                         >
                           Bab {ch.chapterNumber}
@@ -515,232 +542,101 @@ export default function App() {
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* COMIC READING AREA (Webtoon Vertical Continuous Scroll Strip) */}
-            <div 
-              id="comic-reader-panel-area"
-              className={`rounded-3xl p-3 sm:p-6 md:p-8 space-y-6 shadow-2xl transition-colors duration-300 border ${
-                readerTheme === 'light'
-                  ? 'bg-amber-50/95 border-amber-200/90 text-slate-900 shadow-amber-900/10'
-                  : 'bg-slate-950 border-slate-800 text-white shadow-black/60'
-              }`}
-            >
-              <div className={`flex flex-wrap items-center justify-between border-b pb-4 gap-3 ${
-                readerTheme === 'light' ? 'border-amber-200' : 'border-slate-800'
-              }`}>
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${
-                      readerTheme === 'light' ? 'text-amber-700' : 'text-blue-400'
-                    }`}>
-                      <ScrollText className="w-3.5 h-3.5" />
-                      Format Webtoon Scroll Vertikal
-                    </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-semibold border border-blue-500/30">
-                      Auto-Flow
-                    </span>
-                  </div>
-                  <h2 className={`text-lg sm:text-2xl font-black ${
-                    readerTheme === 'light' ? 'text-slate-900' : 'text-white'
-                  }`}>
-                    {activeChapter?.title || 'Bab Komik'}
-                  </h2>
-                  <p className={`text-xs mt-0.5 ${
-                    readerTheme === 'light' ? 'text-slate-600' : 'text-slate-400'
-                  }`}>
-                    Gulir (scroll) ke bawah untuk membaca alur cerita gambar & dialog layaknya webtoon resmi.
+              {/* Reader start / chapter info */}
+              <section className="pt-20 pb-8 px-4 text-center">
+                <div className="max-w-2xl mx-auto">
+                  <p className="text-[11px] uppercase tracking-[0.22em] text-blue-400 font-black mb-2">
+                    Shiroko Comics · Vertical Reader
                   </p>
+                  <h1 className="text-xl sm:text-3xl font-black tracking-tight">{activeChapter?.title || 'Bab Komik'}</h1>
+                  <p className="mt-2 text-xs sm:text-sm text-slate-400">
+                    {activeComic.title} · {activeChapter?.pages.length || 0} panel
+                  </p>
+                  <div className="mt-5 mx-auto max-w-md h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
                 </div>
+              </section>
 
-                <div className="flex items-center gap-3">
-                  {/* Quick Toggle Mode Baca di Panel Reader */}
-                  <button
-                    id="btn-quick-theme-toggle"
-                    onClick={() => setReaderTheme(readerTheme === 'dark' ? 'light' : 'dark')}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer border ${
-                      readerTheme === 'light'
-                        ? 'bg-amber-100 hover:bg-amber-200 border-amber-300 text-amber-900'
-                        : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-200'
-                    }`}
-                  >
-                    {readerTheme === 'light' ? (
-                      <>
-                        <Moon className="w-3.5 h-3.5 text-blue-600" />
-                        <span>Mode Malam</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sun className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Mode Terang</span>
-                      </>
-                    )}
-                  </button>
-
-                  <div className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${
-                    readerTheme === 'light'
-                      ? 'bg-amber-100/80 text-amber-900 border-amber-300/80'
-                      : 'bg-slate-900 text-slate-400 border-slate-800'
-                  }`}>
-                    {activeChapter?.pages.length || 0} Panel Strip
-                  </div>
-                </div>
-              </div>
-
-              {/* Webtoon Infinite Scroll Container - Seamless Vertical Strip */}
-              <div 
+              {/* TRUE CONTINUOUS VERTICAL CANVAS */}
+              <div
                 id="webtoon-scroll-canvas"
-                className={`max-w-2xl mx-auto rounded-2xl overflow-hidden shadow-2xl transition-colors duration-300 border ${
-                  readerTheme === 'light' 
-                    ? 'bg-white border-amber-200 shadow-amber-900/10' 
-                    : 'bg-black border-slate-800 shadow-blue-950/20'
-                }`}
+                className="w-full max-w-[760px] mx-auto bg-black overflow-hidden shadow-2xl"
+                onClick={() => setReaderControlsVisible((v) => !v)}
               >
                 {activeChapter?.pages.map((page, index) => (
-                  <div
+                  <figure
                     key={page.panelNumber}
                     id={`comic-panel-${page.panelNumber}`}
-                    className={`relative group transition-colors duration-300 ${
-                      index > 0 
-                        ? readerTheme === 'light' ? 'border-t border-amber-100' : 'border-t border-slate-900/80' 
-                        : ''
-                    }`}
+                    className="relative m-0 p-0 bg-black"
                   >
-                    {/* Header Panel Indicator */}
-                    <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5">
-                      <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full backdrop-blur-md shadow-md ${
-                        readerTheme === 'light'
-                          ? 'bg-white/90 text-amber-950 border border-amber-200'
-                          : 'bg-black/70 text-slate-200 border border-white/10'
-                      }`}>
-                        Ep.{activeChapter.chapterNumber} • #{page.panelNumber}
-                      </span>
-                      {page.characterName && (
-                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full backdrop-blur-md hidden sm:inline-block ${
-                          readerTheme === 'light'
-                            ? 'bg-amber-100/90 text-amber-900 border border-amber-300/60'
-                            : 'bg-blue-950/80 text-blue-300 border border-blue-700/40'
-                        }`}>
-                          {page.characterName}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Webtoon Illustration Image Frame */}
-                    <div className="relative w-full aspect-[16/10] sm:aspect-[16/9] overflow-hidden bg-slate-900">
-                      <img
-                        src={page.imageUrl || activeComic.coverImageUrl}
-                        alt={`Panel ${page.panelNumber} - ${activeComic.title}`}
-                        className="w-full h-full object-cover object-center transform transition-transform duration-700 group-hover:scale-105"
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                      />
-                      <div className={`absolute inset-0 pointer-events-none bg-gradient-to-t ${
-                        readerTheme === 'light'
-                          ? 'from-white via-transparent to-black/20'
-                          : 'from-black via-transparent to-black/40'
-                      }`} />
-                    </div>
-
-                    {/* Webtoon Scene Action Caption & Dialogue */}
-                    <div className={`p-4 sm:p-6 space-y-4 ${
-                      readerTheme === 'light' ? 'bg-white' : 'bg-slate-950'
-                    }`}>
-                      {/* Action Description */}
-                      <div className={`p-3 rounded-xl text-xs sm:text-sm italic leading-relaxed border ${
-                        readerTheme === 'light'
-                          ? 'bg-amber-50/80 border-amber-200/80 text-slate-700'
-                          : 'bg-slate-900/60 border-slate-800/80 text-slate-300'
-                      }`}>
-                        <div className="flex items-center gap-1.5 mb-1 not-italic font-bold text-[11px] uppercase tracking-wider text-blue-400">
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                          Deskripsi Adegan
-                        </div>
-                        {page.actionDescription}
-                      </div>
-
-                      {/* Webtoon Speech Bubble (Dialog Teks) */}
-                      <div className={`relative rounded-2xl p-4 sm:p-5 shadow-lg border-2 max-w-xl mx-auto transition-transform duration-200 hover:scale-[1.01] ${
-                        readerTheme === 'light'
-                          ? 'bg-amber-50/40 border-amber-300 text-slate-950 shadow-amber-900/5'
-                          : 'bg-slate-900 border-blue-500/60 text-white shadow-blue-900/10'
-                      }`}>
-                        <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-inherit/20">
-                          <MessageSquare className="w-3.5 h-3.5 text-blue-400" />
-                          <span className={`text-[11px] font-black uppercase tracking-wider ${
-                            readerTheme === 'light' ? 'text-amber-800' : 'text-blue-300'
-                          }`}>
-                            {page.characterName || 'Karakter'}
-                          </span>
-                        </div>
-                        <p className="text-sm sm:text-base font-semibold text-center tracking-wide leading-relaxed">
-                          {page.dialogue}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Subtle panel bottom divider spacer (layaknya webtoon) */}
-                    <div className={`h-4 sm:h-6 ${
-                      readerTheme === 'light' ? 'bg-amber-50/50' : 'bg-black'
-                    }`} />
-                  </div>
+                    <img
+                      src={page.imageUrl || activeComic.coverImageUrl}
+                      alt={`Panel ${page.panelNumber} - ${activeComic.title}`}
+                      className="block w-full h-auto max-w-full select-none"
+                      loading={index < 2 ? 'eager' : 'lazy'}
+                      fetchPriority={index < 2 ? 'high' : 'auto'}
+                      decoding="async"
+                      draggable={false}
+                      referrerPolicy="no-referrer"
+                    />
+                  </figure>
                 ))}
               </div>
 
-              {/* End of Chapter notice & Quick chapter switcher */}
-              <div className={`text-center py-6 px-4 rounded-2xl border space-y-3 ${
-                readerTheme === 'light' 
-                  ? 'border-amber-200 bg-amber-100/50 text-slate-800' 
-                  : 'border-slate-800 bg-slate-900/50 text-slate-300'
-              }`}>
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Selesai Membaca {activeChapter?.title}
-                </div>
-                <p className="text-xs sm:text-sm text-slate-400 max-w-md mx-auto">
-                  Kamu telah menyelesaikan seluruh panel strip bab ini. Lanjutkan ke bab berikutnya atau bagikan pendapatmu di kolom komentar di bawah!
-                </p>
+              {/* Reader footer */}
+              <section className="max-w-[760px] mx-auto px-4 py-10 text-center">
+                <div className={`rounded-2xl border p-6 ${
+                  readerTheme === 'light'
+                    ? 'bg-white border-stone-200 text-slate-900'
+                    : 'bg-slate-950 border-slate-800 text-white'
+                }`}>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Tamat Bab {activeChapter?.chapterNumber}
+                  </div>
+                  <h2 className="mt-3 text-lg font-black">{activeChapter?.title}</h2>
+                  <p className="mt-1 text-xs text-slate-400">Kamu sudah sampai di akhir bab ini.</p>
 
-                {/* Quick Chapter Navigation at bottom */}
-                <div className="flex items-center justify-center gap-3 pt-2">
-                  <button
-                    id="btn-prev-chapter-bottom"
-                    disabled={selectedChapterNumber <= 1}
-                    onClick={() => {
-                      setSelectedChapterNumber(prev => Math.max(1, prev - 1));
-                      const el = document.getElementById('comic-reader-panel-area');
-                      el?.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold border border-slate-700 bg-slate-800 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-700 cursor-pointer"
-                  >
-                    ← Bab Sebelumnya
-                  </button>
-                  <button
-                    id="btn-next-chapter-bottom"
-                    disabled={selectedChapterNumber >= activeComic.chapters.length}
-                    onClick={() => {
-                      setSelectedChapterNumber(prev => Math.min(activeComic.chapters.length, prev + 1));
-                      const el = document.getElementById('comic-reader-panel-area');
-                      el?.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold border border-blue-500 bg-blue-600 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-500 cursor-pointer shadow-lg shadow-blue-500/20"
-                  >
-                    Bab Selanjutnya →
-                  </button>
+                  <div className="mt-5 flex items-center justify-center gap-2 sm:gap-3">
+                    <button
+                      id="btn-prev-chapter-bottom"
+                      disabled={selectedChapterNumber <= 1}
+                      onClick={() => {
+                        const next = Math.max(1, selectedChapterNumber - 1);
+                        setSelectedChapterNumber(next);
+                        recordReadingSession(activeComic, next);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="px-4 py-2.5 rounded-xl text-xs font-bold border border-slate-700 bg-slate-900 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-800 cursor-pointer"
+                    >
+                      ← Sebelumnya
+                    </button>
+                    <button
+                      id="btn-next-chapter-bottom"
+                      disabled={selectedChapterNumber >= activeComic.chapters.length}
+                      onClick={() => {
+                        const next = Math.min(activeComic.chapters.length, selectedChapterNumber + 1);
+                        setSelectedChapterNumber(next);
+                        recordReadingSession(activeComic, next);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="px-4 py-2.5 rounded-xl text-xs font-bold bg-blue-600 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-500 cursor-pointer shadow-lg shadow-blue-500/20"
+                    >
+                      Selanjutnya →
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </section>
 
-            {/* SOCIAL FEATURES (Ratings, Favorites, Comments) */}
-            <SocialSection
-              comicId={activeComic.titleId}
-              comicTitle={activeComic.title}
-              comicCover={activeComic.coverImageUrl}
-              genre={activeComic.genre}
-              onRequireLogin={() => setIsLoginModalOpen(true)}
-            />
-          </motion.div>
-        ) : null}
+              <SocialSection
+                comicId={activeComic.titleId}
+                comicTitle={activeComic.title}
+                comicCover={activeComic.coverImageUrl}
+                genre={activeComic.genre}
+                onRequireLogin={() => setIsLoginModalOpen(true)}
+              />
+            </motion.div>
+          ) : null}
 
         {/* VIEW B: BERANDA (HOME PAGE) */}
         {!selectedComicId && currentTab === 'home' && (
