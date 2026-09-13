@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { 
   MOCK_COMICS, 
   Comic, 
@@ -44,7 +45,11 @@ import {
   BookMarked,
   ShieldAlert,
   ChevronDown,
-  Trash2
+  Trash2,
+  Moon,
+  Sun,
+  ScrollText,
+  MessageSquare
 } from 'lucide-react';
 
 type NavTab = 'home' | 'comics' | 'history' | 'favorites' | 'faq' | 'report';
@@ -56,6 +61,7 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<NavTab>('home');
   const [selectedComicId, setSelectedComicId] = useState<string | null>(null);
   const [selectedChapterNumber, setSelectedChapterNumber] = useState<number>(1);
+  const [readerTheme, setReaderTheme] = useState<'dark' | 'light'>('dark');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
 
@@ -82,12 +88,18 @@ export default function App() {
       return;
     }
     const q = query(collection(db, 'reading_history'), where('userId', '==', currentUser.userId));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const items: HistoryItem[] = [];
-      snapshot.forEach((d) => items.push(d.data() as HistoryItem));
-      items.sort((a, b) => b.lastReadAt - a.lastReadAt);
-      setReadingHistory(items);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const items: HistoryItem[] = [];
+        snapshot.forEach((d) => items.push(d.data() as HistoryItem));
+        items.sort((a, b) => b.lastReadAt - a.lastReadAt);
+        setReadingHistory(items);
+      },
+      (error) => {
+        console.warn('Reading history sync (offline/cached mode):', error.message);
+      }
+    );
     return () => unsubscribe();
   }, [currentUser]);
 
@@ -98,12 +110,18 @@ export default function App() {
       return;
     }
     const q = query(collection(db, 'favorites'), where('userId', '==', currentUser.userId));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const items: FavoriteItem[] = [];
-      snapshot.forEach((d) => items.push(d.data() as FavoriteItem));
-      items.sort((a, b) => b.addedAt - a.addedAt);
-      setUserFavorites(items);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const items: FavoriteItem[] = [];
+        snapshot.forEach((d) => items.push(d.data() as FavoriteItem));
+        items.sort((a, b) => b.addedAt - a.addedAt);
+        setUserFavorites(items);
+      },
+      (error) => {
+        console.warn('Favorites sync (offline/cached mode):', error.message);
+      }
+    );
     return () => unsubscribe();
   }, [currentUser]);
 
@@ -357,26 +375,67 @@ export default function App() {
         )}
       </header>
 
-      {/* 2. Main Content Area */}
+      {/* 2. Main Content Area with Fade-In & Slide-Up Motion Transitions */}
       <main className="flex-1">
-        {/* VIEW A: DETAIL / READER PAGE */}
-        {selectedComicId && activeComic ? (
-          <div id="comic-reader-view" className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-8 animate-in fade-in">
-            {/* Navigasi Kembali */}
-            <div className="flex items-center justify-between">
-              <button
-                id="btn-back-to-comics"
-                onClick={() => setSelectedComicId(null)}
-                className="inline-flex items-center gap-2 text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors cursor-pointer bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Kembali ke Daftar Komik</span>
-              </button>
+        <AnimatePresence mode="wait">
+          {/* VIEW A: DETAIL / READER PAGE */}
+          {selectedComicId && activeComic ? (
+            <motion.div
+              key={`reader-${selectedComicId}`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.28, ease: 'easeOut' }}
+              id="comic-reader-view"
+              className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-8"
+            >
+              {/* Navigasi Kembali & Switch Mode Baca */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <button
+                  id="btn-back-to-comics"
+                  onClick={() => setSelectedComicId(null)}
+                  className="inline-flex items-center gap-2 text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors cursor-pointer bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Kembali ke Daftar Komik</span>
+                </button>
 
-              <span className="text-xs text-slate-400">
-                Tahun Rilis: <strong className="text-slate-200">{activeComic.releaseYear}</strong>
-              </span>
-            </div>
+                <div className="flex items-center gap-3">
+                  {/* Switch Mode Baca (Terang / Gelap) */}
+                  <div className="inline-flex items-center p-1 bg-slate-900 border border-slate-800 rounded-xl shadow-inner">
+                    <button
+                      id="btn-reader-mode-dark"
+                      onClick={() => setReaderTheme('dark')}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        readerTheme === 'dark'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      title="Mode Malam / Gelap (Nyaman di mata saat redup)"
+                    >
+                      <Moon className="w-3.5 h-3.5" />
+                      <span>Gelap</span>
+                    </button>
+                    <button
+                      id="btn-reader-mode-light"
+                      onClick={() => setReaderTheme('light')}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        readerTheme === 'light'
+                          ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                      title="Mode Siang / Terang (Jelas dan kontras)"
+                    >
+                      <Sun className="w-3.5 h-3.5" />
+                      <span>Terang</span>
+                    </button>
+                  </div>
+
+                  <span className="text-xs text-slate-400 hidden sm:inline">
+                    Tahun Rilis: <strong className="text-slate-200">{activeComic.releaseYear}</strong>
+                  </span>
+                </div>
+              </div>
 
             {/* Comic Header Banner & Info */}
             <div 
@@ -458,65 +517,217 @@ export default function App() {
               </div>
             </div>
 
-            {/* COMIC READING AREA (Mock comic image panels with Indonesian text) */}
+            {/* COMIC READING AREA (Webtoon Vertical Continuous Scroll Strip) */}
             <div 
               id="comic-reader-panel-area"
-              className="bg-slate-950 border border-slate-800 rounded-3xl p-4 sm:p-8 space-y-8 shadow-2xl"
+              className={`rounded-3xl p-3 sm:p-6 md:p-8 space-y-6 shadow-2xl transition-colors duration-300 border ${
+                readerTheme === 'light'
+                  ? 'bg-amber-50/95 border-amber-200/90 text-slate-900 shadow-amber-900/10'
+                  : 'bg-slate-950 border-slate-800 text-white shadow-black/60'
+              }`}
             >
-              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className={`flex flex-wrap items-center justify-between border-b pb-4 gap-3 ${
+                readerTheme === 'light' ? 'border-amber-200' : 'border-slate-800'
+              }`}>
                 <div>
-                  <span className="text-xs text-blue-400 font-bold uppercase tracking-wider">
-                    Panel Pembaca Digital
-                  </span>
-                  <h2 className="text-lg sm:text-xl font-bold text-white">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${
+                      readerTheme === 'light' ? 'text-amber-700' : 'text-blue-400'
+                    }`}>
+                      <ScrollText className="w-3.5 h-3.5" />
+                      Format Webtoon Scroll Vertikal
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-semibold border border-blue-500/30">
+                      Auto-Flow
+                    </span>
+                  </div>
+                  <h2 className={`text-lg sm:text-2xl font-black ${
+                    readerTheme === 'light' ? 'text-slate-900' : 'text-white'
+                  }`}>
                     {activeChapter?.title || 'Bab Komik'}
                   </h2>
+                  <p className={`text-xs mt-0.5 ${
+                    readerTheme === 'light' ? 'text-slate-600' : 'text-slate-400'
+                  }`}>
+                    Gulir (scroll) ke bawah untuk membaca alur cerita gambar & dialog layaknya webtoon resmi.
+                  </p>
                 </div>
-                <div className="text-xs text-slate-400 bg-slate-900 px-3 py-1 rounded-lg border border-slate-800">
-                  {activeChapter?.pages.length || 0} Panel
+
+                <div className="flex items-center gap-3">
+                  {/* Quick Toggle Mode Baca di Panel Reader */}
+                  <button
+                    id="btn-quick-theme-toggle"
+                    onClick={() => setReaderTheme(readerTheme === 'dark' ? 'light' : 'dark')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer border ${
+                      readerTheme === 'light'
+                        ? 'bg-amber-100 hover:bg-amber-200 border-amber-300 text-amber-900'
+                        : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-200'
+                    }`}
+                  >
+                    {readerTheme === 'light' ? (
+                      <>
+                        <Moon className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Mode Malam</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sun className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Mode Terang</span>
+                      </>
+                    )}
+                  </button>
+
+                  <div className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${
+                    readerTheme === 'light'
+                      ? 'bg-amber-100/80 text-amber-900 border-amber-300/80'
+                      : 'bg-slate-900 text-slate-400 border-slate-800'
+                  }`}>
+                    {activeChapter?.pages.length || 0} Panel Strip
+                  </div>
                 </div>
               </div>
 
-              {/* Sequential Comic Strip Panels */}
-              <div className="space-y-6 max-w-3xl mx-auto">
-                {activeChapter?.pages.map((page) => (
+              {/* Webtoon Infinite Scroll Container - Seamless Vertical Strip */}
+              <div 
+                id="webtoon-scroll-canvas"
+                className={`max-w-2xl mx-auto rounded-2xl overflow-hidden shadow-2xl transition-colors duration-300 border ${
+                  readerTheme === 'light' 
+                    ? 'bg-white border-amber-200 shadow-amber-900/10' 
+                    : 'bg-black border-slate-800 shadow-blue-950/20'
+                }`}
+              >
+                {activeChapter?.pages.map((page, index) => (
                   <div
                     key={page.panelNumber}
                     id={`comic-panel-${page.panelNumber}`}
-                    style={{ backgroundColor: page.bgColor }}
-                    className="p-6 sm:p-8 rounded-2xl border border-slate-700/80 shadow-2xl space-y-4 relative overflow-hidden transition-all duration-300 hover:border-blue-500/60"
+                    className={`relative group transition-colors duration-300 ${
+                      index > 0 
+                        ? readerTheme === 'light' ? 'border-t border-amber-100' : 'border-t border-slate-900/80' 
+                        : ''
+                    }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-black/50 text-slate-300">
-                        Panel #{page.panelNumber}
+                    {/* Header Panel Indicator */}
+                    <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5">
+                      <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full backdrop-blur-md shadow-md ${
+                        readerTheme === 'light'
+                          ? 'bg-white/90 text-amber-950 border border-amber-200'
+                          : 'bg-black/70 text-slate-200 border border-white/10'
+                      }`}>
+                        Ep.{activeChapter.chapterNumber} • #{page.panelNumber}
                       </span>
-                      <span className="text-[10px] text-blue-300 font-mono tracking-wider">
-                        SHIROKO READER ENGINE
-                      </span>
+                      {page.characterName && (
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full backdrop-blur-md hidden sm:inline-block ${
+                          readerTheme === 'light'
+                            ? 'bg-amber-100/90 text-amber-900 border border-amber-300/60'
+                            : 'bg-blue-950/80 text-blue-300 border border-blue-700/40'
+                        }`}>
+                          {page.characterName}
+                        </span>
+                      )}
                     </div>
 
-                    {/* Comic Panel Action / Visual scene description in Indonesian */}
-                    <div className="py-8 px-4 sm:px-8 rounded-xl bg-black/40 border border-white/10 flex flex-col items-center justify-center text-center space-y-3 min-h-[160px]">
-                      <div className="w-12 h-1 bg-blue-500/50 rounded-full mb-1" />
-                      <p className="text-xs sm:text-sm text-slate-300 italic max-w-lg leading-relaxed">
-                        [{page.actionDescription}]
-                      </p>
-                      <div className="w-12 h-1 bg-blue-500/50 rounded-full mt-1" />
+                    {/* Webtoon Illustration Image Frame */}
+                    <div className="relative w-full aspect-[16/10] sm:aspect-[16/9] overflow-hidden bg-slate-900">
+                      <img
+                        src={page.imageUrl || activeComic.coverImageUrl}
+                        alt={`Panel ${page.panelNumber} - ${activeComic.title}`}
+                        className="w-full h-full object-cover object-center transform transition-transform duration-700 group-hover:scale-105"
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className={`absolute inset-0 pointer-events-none bg-gradient-to-t ${
+                        readerTheme === 'light'
+                          ? 'from-white via-transparent to-black/20'
+                          : 'from-black via-transparent to-black/40'
+                      }`} />
                     </div>
 
-                    {/* Dialogue Bubble (Indonesian) */}
-                    <div className="relative bg-slate-900/90 border-2 border-blue-400/80 rounded-2xl p-4 sm:p-5 shadow-xl max-w-md mx-auto">
-                      <div className="absolute -top-2 left-6 w-3 h-3 bg-slate-900 border-t-2 border-l-2 border-blue-400/80 rotate-45" />
-                      <p className="text-sm sm:text-base font-bold text-white text-center tracking-wide leading-relaxed">
-                        {page.dialogue}
-                      </p>
+                    {/* Webtoon Scene Action Caption & Dialogue */}
+                    <div className={`p-4 sm:p-6 space-y-4 ${
+                      readerTheme === 'light' ? 'bg-white' : 'bg-slate-950'
+                    }`}>
+                      {/* Action Description */}
+                      <div className={`p-3 rounded-xl text-xs sm:text-sm italic leading-relaxed border ${
+                        readerTheme === 'light'
+                          ? 'bg-amber-50/80 border-amber-200/80 text-slate-700'
+                          : 'bg-slate-900/60 border-slate-800/80 text-slate-300'
+                      }`}>
+                        <div className="flex items-center gap-1.5 mb-1 not-italic font-bold text-[11px] uppercase tracking-wider text-blue-400">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                          Deskripsi Adegan
+                        </div>
+                        {page.actionDescription}
+                      </div>
+
+                      {/* Webtoon Speech Bubble (Dialog Teks) */}
+                      <div className={`relative rounded-2xl p-4 sm:p-5 shadow-lg border-2 max-w-xl mx-auto transition-transform duration-200 hover:scale-[1.01] ${
+                        readerTheme === 'light'
+                          ? 'bg-amber-50/40 border-amber-300 text-slate-950 shadow-amber-900/5'
+                          : 'bg-slate-900 border-blue-500/60 text-white shadow-blue-900/10'
+                      }`}>
+                        <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-inherit/20">
+                          <MessageSquare className="w-3.5 h-3.5 text-blue-400" />
+                          <span className={`text-[11px] font-black uppercase tracking-wider ${
+                            readerTheme === 'light' ? 'text-amber-800' : 'text-blue-300'
+                          }`}>
+                            {page.characterName || 'Karakter'}
+                          </span>
+                        </div>
+                        <p className="text-sm sm:text-base font-semibold text-center tracking-wide leading-relaxed">
+                          {page.dialogue}
+                        </p>
+                      </div>
                     </div>
+
+                    {/* Subtle panel bottom divider spacer (layaknya webtoon) */}
+                    <div className={`h-4 sm:h-6 ${
+                      readerTheme === 'light' ? 'bg-amber-50/50' : 'bg-black'
+                    }`} />
                   </div>
                 ))}
               </div>
 
-              <div className="text-center pt-4 pb-2 border-t border-slate-900 text-xs text-slate-500">
-                Akhir dari {activeChapter?.title}. Geser ke bawah untuk ulasan dan diskusi pembaca.
+              {/* End of Chapter notice & Quick chapter switcher */}
+              <div className={`text-center py-6 px-4 rounded-2xl border space-y-3 ${
+                readerTheme === 'light' 
+                  ? 'border-amber-200 bg-amber-100/50 text-slate-800' 
+                  : 'border-slate-800 bg-slate-900/50 text-slate-300'
+              }`}>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Selesai Membaca {activeChapter?.title}
+                </div>
+                <p className="text-xs sm:text-sm text-slate-400 max-w-md mx-auto">
+                  Kamu telah menyelesaikan seluruh panel strip bab ini. Lanjutkan ke bab berikutnya atau bagikan pendapatmu di kolom komentar di bawah!
+                </p>
+
+                {/* Quick Chapter Navigation at bottom */}
+                <div className="flex items-center justify-center gap-3 pt-2">
+                  <button
+                    id="btn-prev-chapter-bottom"
+                    disabled={selectedChapterNumber <= 1}
+                    onClick={() => {
+                      setSelectedChapterNumber(prev => Math.max(1, prev - 1));
+                      const el = document.getElementById('comic-reader-panel-area');
+                      el?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold border border-slate-700 bg-slate-800 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-700 cursor-pointer"
+                  >
+                    ← Bab Sebelumnya
+                  </button>
+                  <button
+                    id="btn-next-chapter-bottom"
+                    disabled={selectedChapterNumber >= activeComic.chapters.length}
+                    onClick={() => {
+                      setSelectedChapterNumber(prev => Math.min(activeComic.chapters.length, prev + 1));
+                      const el = document.getElementById('comic-reader-panel-area');
+                      el?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold border border-blue-500 bg-blue-600 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-500 cursor-pointer shadow-lg shadow-blue-500/20"
+                  >
+                    Bab Selanjutnya →
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -528,12 +739,20 @@ export default function App() {
               genre={activeComic.genre}
               onRequireLogin={() => setIsLoginModalOpen(true)}
             />
-          </div>
+          </motion.div>
         ) : null}
 
         {/* VIEW B: BERANDA (HOME PAGE) */}
         {!selectedComicId && currentTab === 'home' && (
-          <div id="home-view" className="space-y-12 pb-16">
+          <motion.div
+            key="tab-home"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            id="home-view"
+            className="space-y-12 pb-16"
+          >
             {/* Hero Section dengan Tema Biru Elegan */}
             <section 
               id="hero-section"
@@ -652,12 +871,20 @@ export default function App() {
                 ))}
               </div>
             </section>
-          </div>
+          </motion.div>
         )}
 
         {/* VIEW C: DAFTAR KOMIK (COMIC LIST PAGE & SEARCH / FILTER) */}
         {!selectedComicId && currentTab === 'comics' && (
-          <div id="comics-view" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+          <motion.div
+            key="tab-comics"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            id="comics-view"
+            className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8"
+          >
             {/* Header Judul & Search / Filter Controls */}
             <div className="space-y-4">
               <div>
@@ -811,12 +1038,20 @@ export default function App() {
                 ))}
               </div>
             )}
-          </div>
+          </motion.div>
         )}
 
         {/* VIEW D: FAVORIT SAYA (FAVORITES PAGE) */}
         {!selectedComicId && currentTab === 'favorites' && (
-          <div id="favorites-view" className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+          <motion.div
+            key="tab-favorites"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            id="favorites-view"
+            className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
@@ -885,12 +1120,20 @@ export default function App() {
                 ))}
               </div>
             )}
-          </div>
+          </motion.div>
         )}
 
         {/* VIEW E: RIWAYAT BACA (READING HISTORY PAGE) */}
         {!selectedComicId && currentTab === 'history' && (
-          <div id="history-view" className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+          <motion.div
+            key="tab-history"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            id="history-view"
+            className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
@@ -983,12 +1226,20 @@ export default function App() {
                 ))}
               </div>
             )}
-          </div>
+          </motion.div>
         )}
 
         {/* VIEW F: TANYA JAWAB (FAQ PAGE) */}
         {!selectedComicId && currentTab === 'faq' && (
-          <div id="faq-view" className="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+          <motion.div
+            key="tab-faq"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            id="faq-view"
+            className="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-6"
+          >
             <div className="text-center space-y-2 mb-8">
               <div className="w-12 h-12 rounded-2xl bg-blue-600/20 text-blue-400 flex items-center justify-center mx-auto border border-blue-500/30">
                 <HelpCircle className="w-6 h-6" />
@@ -1018,15 +1269,24 @@ export default function App() {
                 </div>
               ))}
             </div>
-          </div>
+          </motion.div>
         )}
 
         {/* VIEW G: LAPOR BUG / SARAN (REPORT FORM PAGE) */}
         {!selectedComicId && currentTab === 'report' && (
-          <div id="report-view" className="px-4 sm:px-6 py-8">
+          <motion.div
+            key="tab-report"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            id="report-view"
+            className="px-4 sm:px-6 py-8"
+          >
             <BugReportForm />
-          </div>
+          </motion.div>
         )}
+        </AnimatePresence>
       </main>
 
       {/* 3. Footer */}

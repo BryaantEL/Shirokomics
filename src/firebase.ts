@@ -1,14 +1,22 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// Use the specific firestoreDatabaseId if configured in the applet config
-export const db = firebaseConfig.firestoreDatabaseId 
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-  : getFirestore(app);
+// Inisialisasi Firestore dengan databaseId dan auto-fallback experimentalAutoDetectLongPolling
+// untuk menghindari 'Could not reach Cloud Firestore backend' di lingkungan iframe/proxy
+export const db = initializeFirestore(
+  app,
+  {
+    experimentalAutoDetectLongPolling: true,
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  },
+  firebaseConfig.firestoreDatabaseId || '(default)'
+);
 
 export const auth = getAuth(app);
 
@@ -18,8 +26,9 @@ export const ensureFirebaseAuth = async () => {
     try {
       await signInAnonymously(auth);
     } catch (e) {
-      console.warn('Anonymous auth note:', e);
+      console.warn('Anonymous auth note (offline or disabled):', e);
     }
   }
   return auth.currentUser;
 };
+

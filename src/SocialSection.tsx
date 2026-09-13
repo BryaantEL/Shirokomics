@@ -52,46 +52,64 @@ export const SocialSection: React.FC<SocialSectionProps> = ({
   // 1. Subscribe to ratings for this comic
   useEffect(() => {
     const q = query(collection(db, 'ratings'), where('comicId', '==', comicId));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: RatingItem[] = [];
-      snapshot.forEach((d) => list.push(d.data() as RatingItem));
-      setRatings(list);
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const list: RatingItem[] = [];
+        snapshot.forEach((d) => list.push(d.data() as RatingItem));
+        setRatings(list);
 
-      if (currentUser) {
-        const found = list.find((r) => r.userId === currentUser.userId);
-        setUserRating(found ? found.score : 0);
+        if (currentUser) {
+          const found = list.find((r) => r.userId === currentUser.userId);
+          setUserRating(found ? found.score : 0);
+        }
+      },
+      (error) => {
+        console.warn('Ratings sync (offline/cached mode):', error.message);
       }
-    });
+    );
     return () => unsubscribe();
   }, [comicId, currentUser]);
 
   // 2. Subscribe to favorites for this comic & check if current user favorited
   useEffect(() => {
     const q = query(collection(db, 'favorites'), where('comicId', '==', comicId));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setFavCount(snapshot.size);
-      if (currentUser) {
-        const hasFav = snapshot.docs.some((doc) => doc.data().userId === currentUser.userId);
-        setIsFavorite(hasFav);
-      } else {
-        setIsFavorite(false);
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        setFavCount(snapshot.size);
+        if (currentUser) {
+          const hasFav = snapshot.docs.some((doc) => doc.data().userId === currentUser.userId);
+          setIsFavorite(hasFav);
+        } else {
+          setIsFavorite(false);
+        }
+      },
+      (error) => {
+        console.warn('Favorites count sync (offline/cached mode):', error.message);
       }
-    });
+    );
     return () => unsubscribe();
   }, [comicId, currentUser]);
 
   // 3. Subscribe to comments for this comic
   useEffect(() => {
     const q = query(collection(db, 'comments'), where('comicId', '==', comicId));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: CommentItem[] = [];
-      snapshot.forEach((d) => {
-        list.push({ id: d.id, ...(d.data() as Omit<CommentItem, 'id'>) });
-      });
-      // Sort in-memory chronologically
-      list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      setComments(list);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const list: CommentItem[] = [];
+        snapshot.forEach((d) => {
+          list.push({ id: d.id, ...(d.data() as Omit<CommentItem, 'id'>) });
+        });
+        // Sort in-memory chronologically
+        list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        setComments(list);
+      },
+      (error) => {
+        console.warn('Comments sync (offline/cached mode):', error.message);
+      }
+    );
     return () => unsubscribe();
   }, [comicId]);
 

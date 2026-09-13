@@ -9,6 +9,8 @@ export interface ComicChapter {
     actionDescription: string;
     bgColor: string;
     accentColor: string;
+    imageUrl?: string;
+    characterName?: string;
   }[];
 }
 
@@ -105,31 +107,39 @@ export const MOCK_COMICS: Comic[] = [
         pages: [
           {
             panelNumber: 1,
+            characterName: 'Sunaookami Shiroko',
             dialogue: '"Guru... Angin gurun hari ini membawa aroma mesiu yang tidak biasa."',
             actionDescription: 'Shiroko merapatkan masker dan memeriksa laras senapan serbu SIG556 miliknya di atas atap sekolah Abydos yang runtuh.',
             bgColor: '#0f172a',
-            accentColor: '#38bdf8'
+            accentColor: '#38bdf8',
+            imageUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=80'
           },
           {
             panelNumber: 2,
-            dialogue: '"Hoshino-senpai masih tertidur pulas. Nonomi sudah menyiapkan perbekalan kita."',
-            actionDescription: 'Drone pengintai Kaiser terdeteksi pada radar perimeter 300 meter di sektor barat.',
+            characterName: 'Sunaookami Shiroko',
+            dialogue: '"Hoshino-senpai masih tertidur pulas. Nonomi sudah menyiapkan perbekalan dan amunisi kita."',
+            actionDescription: 'Drone pengintai Kaiser terdeteksi pada radar perimeter 300 meter di sektor barat melintasi bukit pasir.',
             bgColor: '#1e293b',
-            accentColor: '#60a5fa'
+            accentColor: '#60a5fa',
+            imageUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80'
           },
           {
             panelNumber: 3,
-            dialogue: '"Jangan biarkan satu pun tank mereka menyentuh aula Abydos! Bank Kaiser harus bertanggung jawab!"',
-            actionDescription: 'Shiroko melompat turun dengan kelincahan sempurna, memicu drone pengalih perhatian.',
+            characterName: 'Sunaookami Shiroko',
+            dialogue: '"Jangan biarkan satu pun armada lapis baja mereka menyentuh aula Abydos! Bank Kaiser harus bertanggung jawab!"',
+            actionDescription: 'Shiroko melompat turun dengan kelincahan sempurna, memicu drone pengalih perhatian dan membuka tembakan penekan.',
             bgColor: '#0284c7',
-            accentColor: '#bae6fd'
+            accentColor: '#bae6fd',
+            imageUrl: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=1200&q=80'
           },
           {
             panelNumber: 4,
-            dialogue: '"Target terkunci. Menembak sekarang!"',
-            actionDescription: 'Kilatan cahaya biru menyambar di antara badai pasir, meremukkan perisai musuh.',
+            characterName: 'Sunaookami Shiroko',
+            dialogue: '"Target terkunci. Drone tempur dikerahkan. Menembak sekarang!"',
+            actionDescription: 'Kilatan cahaya biru menyambar di antara badai pasir bergemuruh, meremukkan perisai medan elektromagnetik musuh.',
             bgColor: '#0c4a6e',
-            accentColor: '#38bdf8'
+            accentColor: '#38bdf8',
+            imageUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80'
           }
         ]
       },
@@ -141,17 +151,21 @@ export const MOCK_COMICS: Comic[] = [
         pages: [
           {
             panelNumber: 1,
-            dialogue: '"Dokumen ini membuktikan tanah Abydos tidak pernah sah dijual."',
-            actionDescription: 'Ayane memindai brankas rahasia di bunker bawah tanah stasiun kereta tua.',
+            characterName: 'Okusora Ayane',
+            dialogue: '"Dokumen ini membuktikan tanah Abydos tidak pernah sah dijual oleh dewan kota."',
+            actionDescription: 'Ayane memindai brankas rahasia di bunker bawah tanah stasiun kereta tua yang tertimbun pasir berabad-abad.',
             bgColor: '#0f172a',
-            accentColor: '#38bdf8'
+            accentColor: '#38bdf8',
+            imageUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=1200&q=80'
           },
           {
             panelNumber: 2,
-            dialogue: '"Kalau begitu, langkah berikutnya sudah jelas. Kita datangi markas mereka."',
-            actionDescription: 'Shiroko mengayuh sepedanya menerobos badai debu dengan tekad membara.',
+            characterName: 'Sunaookami Shiroko',
+            dialogue: '"Kalau begitu, langkah berikutnya sudah jelas. Kita datangi markas besar mereka!"',
+            actionDescription: 'Shiroko mengayuh sepedanya menerobos badai debu dengan tekad membara diiringi deru drone pendukung.',
             bgColor: '#1e293b',
-            accentColor: '#38bdf8'
+            accentColor: '#38bdf8',
+            imageUrl: 'https://images.unsplash.com/photo-1563089145-599997674d42?auto=format&fit=crop&w=1200&q=80'
           }
         ]
       }
@@ -161,7 +175,7 @@ export const MOCK_COMICS: Comic[] = [
     titleId: 'pedang-legenda-astral',
     title: 'Pedang Legenda Astral',
     genre: ['Fantasi', 'Petualangan', 'Sihir'],
-    description: 'Karya klasik tahun 1998 yang melegenda. Pemuda desa menemukan serpihan pedang meteor kuno yang mampu membelah dimensi waktu dan kutukan iblis langit.',
+    description: 'Karya klasik tahun 1998 yang melegenda bergaya webtoon epik. Pemuda desa menemukan serpihan pedang meteor kuno yang mampu membelah dimensi waktu dan kutukan iblis langit.',
     coverImageUrl: 'https://images.unsplash.com/photo-1563089145-599997674d42?auto=format&fit=crop&w=800&q=80',
     bannerImageUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1600&q=80',
     author: 'Kenji Arisawa',
@@ -178,24 +192,30 @@ export const MOCK_COMICS: Comic[] = [
         pages: [
           {
             panelNumber: 1,
+            characterName: 'Reyhan',
             dialogue: '"Kakek selalu melarangku mendaki tebing terlarang saat gerhana..."',
-            actionDescription: 'Reyhan menyibak semak belukar yang berpendar kebiruan.',
+            actionDescription: 'Reyhan menyibak semak belukar yang berpendar kebiruan di kaki tebing terlarang.',
             bgColor: '#1e1b4b',
-            accentColor: '#818cf8'
+            accentColor: '#818cf8',
+            imageUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80'
           },
           {
             panelNumber: 2,
+            characterName: 'Pedang Roh Astral',
             dialogue: '"Hah?! Bilah pedang yang tertancap di batu ini... mengapa bersuara memanggil namaku?"',
-            actionDescription: 'Getaran resonansi kuat mengguncang lereng gunung.',
+            actionDescription: 'Getaran resonansi kuat mengguncang lereng gunung saat batu meteorit mulai retak keemasan.',
             bgColor: '#312e81',
-            accentColor: '#a5b4fc'
+            accentColor: '#a5b4fc',
+            imageUrl: 'https://images.unsplash.com/photo-1563089145-599997674d42?auto=format&fit=crop&w=1200&q=80'
           },
           {
             panelNumber: 3,
+            characterName: 'Reyhan',
             dialogue: '"Bangkitlah pewaris fajar! Segel naga bintang telah retak!"',
-            actionDescription: 'Kilau perak membubung ke angkasa malam, membakar awan pekat.',
+            actionDescription: 'Kilau perak membubung ke angkasa malam, membelah langit dan membakar awan pekat kegelapan.',
             bgColor: '#172554',
-            accentColor: '#93c5fd'
+            accentColor: '#93c5fd',
+            imageUrl: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=1200&q=80'
           }
         ]
       }
@@ -205,7 +225,7 @@ export const MOCK_COMICS: Comic[] = [
     titleId: 'cyber-neo-jakarta-2088',
     title: 'Cyber Neo Nusantara 2088',
     genre: ['Sci-Fi', 'Misteri', 'Aksi'],
-    description: 'Metropolis berhias neon holografik dan jaringan siber bawah tanah. Seorang peretas jalanan menyelidiki sindikat rekayasa memori artifisial elit korporasi.',
+    description: 'Metropolis berhias neon holografik dan jaringan siber bawah tanah ala webtoon cyberpunk modern. Seorang peretas jalanan menyelidiki sindikat rekayasa memori artifisial elit korporasi.',
     coverImageUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80',
     bannerImageUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=1600&q=80',
     author: 'Rian Dewantoro',
@@ -222,24 +242,30 @@ export const MOCK_COMICS: Comic[] = [
         pages: [
           {
             panelNumber: 1,
+            characterName: 'Arka the Hacker',
             dialogue: '"Koneksi neural terpasang. firewall tingkat 5 milik GigaCorp berhasil kutembus."',
-            actionDescription: 'Layar implan mata kiri Arka menyala dengan ribuan baris kode biner.',
+            actionDescription: 'Layar implan mata kiri Arka menyala dengan ribuan baris kode biner yang mengalir cepat.',
             bgColor: '#030712',
-            accentColor: '#06b6d4'
+            accentColor: '#06b6d4',
+            imageUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80'
           },
           {
             panelNumber: 2,
+            characterName: 'Arka the Hacker',
             dialogue: '"Tunggu sebentar... data ini bukan keuangan! Ini rekaman kesadaran manusia hidup!"',
-            actionDescription: 'Alarm merah menyala di gang Glodok Cyber District.',
+            actionDescription: 'Alarm merah menyala di gang Glodok Cyber District saat sinyal pelacak musuh terkoneksi.',
             bgColor: '#082f49',
-            accentColor: '#38bdf8'
+            accentColor: '#38bdf8',
+            imageUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=1200&q=80'
           },
           {
             panelNumber: 3,
+            characterName: 'Arka the Hacker',
             dialogue: '"Drone eksekutor mendekat dalam 10 detik! Aku harus melompat ke jalur monorel!"',
-            actionDescription: 'Sepatu kinetik Arka melontarkannya melintasi billboard hologram raksasa.',
+            actionDescription: 'Sepatu kinetik Arka melontarkannya melintasi billboard hologram raksasa di atas jalanan kota berkabut.',
             bgColor: '#0f172a',
-            accentColor: '#38bdf8'
+            accentColor: '#38bdf8',
+            imageUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=80'
           }
         ]
       }
@@ -249,7 +275,7 @@ export const MOCK_COMICS: Comic[] = [
     titleId: 'detektif-angin-selatan',
     title: 'Detektif Angin Selatan: Kasus Jam Gadang',
     genre: ['Misteri', 'Drama', 'Detektif'],
-    description: 'Seri misteri klasik era 1995. Detektif legendaris Bramantyo memecahkan teka-teki pembunuhan berantai dengan petunjuk ukiran wayang dan sandi kuno.',
+    description: 'Seri misteri klasik era 1995 bernuansa webtoon detektif noir. Detektif legendaris Bramantyo memecahkan teka-teki pembunuhan berantai dengan petunjuk ukiran wayang dan sandi kuno.',
     coverImageUrl: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=800&q=80',
     bannerImageUrl: 'https://images.unsplash.com/photo-1447069387593-a5de0862481e?auto=format&fit=crop&w=1600&q=80',
     author: 'S. Wardhana',
@@ -266,24 +292,30 @@ export const MOCK_COMICS: Comic[] = [
         pages: [
           {
             panelNumber: 1,
+            characterName: 'Detektif Bramantyo',
             dialogue: '"Hujan lebat tak mampu menghapus aroma tembakau di beranda museum."',
-            actionDescription: 'Detektif Bram menyalakan pipa cangklong sambil menatap jejak lumpur ganjil.',
+            actionDescription: 'Detektif Bram menyalakan pipa cangklong sambil menatap jejak lumpur ganjil yang mengarah ke brankas.',
             bgColor: '#1c1917',
-            accentColor: '#f59e0b'
+            accentColor: '#f59e0b',
+            imageUrl: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=1200&q=80'
           },
           {
             panelNumber: 2,
+            characterName: 'Pak Sukardi (Penjaga)',
             dialogue: '"Tuan Bram! Jam dinding kuno berhenti tepat pukul 00:03... dan kuncinya raib!"',
-            actionDescription: 'Penjaga gedung terengah-engah menunjukkan pintu ruang pameran yang terbuka.',
+            actionDescription: 'Penjaga gedung terengah-engah menunjukkan pintu ruang pameran pusaka yang terbuka paksa.',
             bgColor: '#292524',
-            accentColor: '#d97706'
+            accentColor: '#d97706',
+            imageUrl: 'https://images.unsplash.com/photo-1447069387593-a5de0862481e?auto=format&fit=crop&w=1200&q=80'
           },
           {
             panelNumber: 3,
+            characterName: 'Detektif Bramantyo',
             dialogue: '"Pelakunya bukan pencuri biasa. Mereka meninggalkan sehelai bulu burung hantu putih."',
-            actionDescription: 'Kaca pembesar menampakkan simbol tersembunyi pada engsel tembaga.',
+            actionDescription: 'Kaca pembesar menampakkan simbol tersembunyi berukir huruf sansekerta pada engsel tembaga.',
             bgColor: '#0f172a',
-            accentColor: '#38bdf8'
+            accentColor: '#38bdf8',
+            imageUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80'
           }
         ]
       }
@@ -293,7 +325,7 @@ export const MOCK_COMICS: Comic[] = [
     titleId: 'valkyrie-langit-biru',
     title: 'Valkyrie Langit Biru: Sayap Terakhir',
     genre: ['Romansa', 'Fantasi', 'Aksi'],
-    description: 'Di dunia terapung di atas awan, seorang ksatria penjaga kubah kristal bersumpah melindungi putri pengembara yang membawa benih pohon kehidupan.',
+    description: 'Di dunia terapung di atas awan berformat webtoon romantis fantasi berkecepatan tinggi. Ksatria pelindung kubah kristal bersumpah melindungi putri pengembara yang membawa benih pohon kehidupan.',
     coverImageUrl: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=800&q=80',
     bannerImageUrl: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1600&q=80',
     author: 'Maya Lin & Hanabi',
@@ -310,24 +342,30 @@ export const MOCK_COMICS: Comic[] = [
         pages: [
           {
             panelNumber: 1,
+            characterName: 'Putri Celestia',
             dialogue: '"Kubah langit kita mulai retak... Apakah ramalan seribu tahun itu benar?"',
-            actionDescription: 'Putri Celestia menatap pecahan kaca kristal yang melayang di langit senja.',
+            actionDescription: 'Putri Celestia menatap pecahan kaca kristal yang melayang perlahan di langit senja keemasan.',
             bgColor: '#0c2340',
-            accentColor: '#67e8f9'
+            accentColor: '#67e8f9',
+            imageUrl: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=1200&q=80'
           },
           {
             panelNumber: 2,
+            characterName: 'Kaelen Sang Ksatria',
             dialogue: '"Selama tombak biruku masih tegak, takkan kubiarkan badai kehampaan menyentuhmu."',
-            actionDescription: 'Kaelen membentangkan sayap mekanik berwarna biru safir bercahaya.',
+            actionDescription: 'Kaelen membentangkan sepasang sayap mekanik berwarna biru safir bercahaya menentang badai.',
             bgColor: '#1e3a8a',
-            accentColor: '#93c5fd'
+            accentColor: '#93c5fd',
+            imageUrl: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1200&q=80'
           },
           {
             panelNumber: 3,
-            dialogue: '"Pegang erat tanganku. Hari ini kita terbang melintasi jurang kabut!"',
-            actionDescription: 'Keduanya meluncur menembus awan badai menuju dunia bawah yang belum terjamah.',
+            characterName: 'Kaelen & Celestia',
+            dialogue: '"Pegang erat tanganku. Hari ini kita terbang melintasi jurang kabut abadi!"',
+            actionDescription: 'Keduanya meluncur menembus awan badai menuju dunia bawah tanah baru yang belum terjamah manusia.',
             bgColor: '#0284c7',
-            accentColor: '#e0f2fe'
+            accentColor: '#e0f2fe',
+            imageUrl: 'https://images.unsplash.com/photo-1563089145-599997674d42?auto=format&fit=crop&w=1200&q=80'
           }
         ]
       }
