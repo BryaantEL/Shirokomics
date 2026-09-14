@@ -119,6 +119,40 @@ export const MOCK_COMICS: Comic[] = [
         })
       }
     ]
+  },
+  {
+    titleId: 'haikyu-vol-1',
+    title: 'Haikyu Vol.1',
+    genre: ['Sports'],
+    description: 'Haikyu Vol.1 — kisah perjalanan seorang pemain voli muda dalam mengejar mimpinya di dunia bola voli.',
+    coverImageUrl: '/comics/haikyu-vol-1/chapter-01/page-001.jpg',
+    bannerImageUrl: '/comics/haikyu-vol-1/chapter-01/page-001.jpg',
+    author: 'Haruichi Furudate',
+    releaseYear: 2012,
+    status: 'Sedang Rilis',
+    views: 0,
+    category: 'newest',
+    chapters: [
+      {
+        id: 'haikyu-vol-1-chapter-01',
+        chapterNumber: 1,
+        title: 'Haikyu Vol.1',
+        releaseDate: '15 Sep 2026',
+        pages: Array.from({ length: 203 }, (_, index) => {
+          const pageNumber = index + 1;
+          const pageFile = String(pageNumber).padStart(3, '0');
+
+          return {
+            panelNumber: pageNumber,
+            dialogue: '',
+            actionDescription: '',
+            bgColor: '#000000',
+            accentColor: '#f97316',
+            imageUrl: `/comics/haikyu-vol-1/chapter-01/page-${pageFile}.jpg`
+          };
+        })
+      }
+    ]
   }
 ];
 
