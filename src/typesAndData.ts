@@ -370,6 +370,40 @@ export const MOCK_COMICS: Comic[] = [
         ]
       }
     ]
+  },
+    {
+    titleId: 'the-cursed-face',
+    title: 'THE CURSED FACE',
+    genre: ['Horror'],
+    description: 'THE CURSED FACE adalah komik bergenre Horror dengan satu chapter yang terdiri dari 148 halaman.',
+    coverImageUrl: '/comics/the-cursed-face/chapter-01/page-001.jpg',
+    bannerImageUrl: '/comics/the-cursed-face/chapter-01/page-001.jpg',
+    author: 'Unknown',
+    releaseYear: 2026,
+    status: 'Sedang Rilis',
+    views: 0,
+    category: 'newest',
+    chapters: [
+      {
+        id: 'the-cursed-face-chapter-01',
+        chapterNumber: 1,
+        title: 'THE CURSED FACE',
+        releaseDate: '13 Sep 2026',
+        pages: Array.from({ length: 148 }, (_, index) => {
+          const pageNumber = index + 1;
+          const pageFile = String(pageNumber).padStart(3, '0');
+
+          return {
+            panelNumber: pageNumber,
+            dialogue: '',
+            actionDescription: '',
+            bgColor: '#000000',
+            accentColor: '#7f1d1d',
+            imageUrl: `/comics/the-cursed-face/chapter-01/page-${pageFile}.jpg`
+          };
+        })
+      }
+    ]
   }
 ];
 
