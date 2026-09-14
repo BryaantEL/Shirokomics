@@ -76,6 +76,16 @@ export default function App() {
   const [readingHistory, setReadingHistory] = useState<HistoryItem[]>([]);
   const [userFavorites, setUserFavorites] = useState<FavoriteItem[]>([]);
 
+  // Local fallback untuk fitur Continue Reading tanpa login.
+  const [localContinueReading, setLocalContinueReading] = useState<HistoryItem | null>(() => {
+    try {
+      const saved = localStorage.getItem('shiroko-continue-reading');
+      return saved ? (JSON.parse(saved) as HistoryItem) : null;
+    } catch {
+      return null;
+    }
+  });
+
   // Collect unique genres
   const allGenres = ['Semua', ...Array.from(new Set(MOCK_COMICS.flatMap((c) => c.genre)))];
 
@@ -127,78 +137,245 @@ export default function App() {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // Reader UX: progress, auto-hide controls, and local resume position.
+  // Reader UX: progress, auto-hide controls, local resume,
+  // dan sinkronisasi progress ke Firestore.
   useEffect(() => {
     if (!selectedComicId) return;
 
     let hideTimer: ReturnType<typeof setTimeout> | undefined;
+    let cloudSaveTimer: ReturnType<typeof setTimeout> | undefined;
+
     const storageKey = `shiroko-reader:${selectedComicId}:${selectedChapterNumber}`;
 
     const updateReaderState = () => {
-      const doc = document.documentElement;
-      const maxScroll = Math.max(1, doc.scrollHeight - window.innerHeight);
-      const progress = Math.min(100, Math.max(0, (window.scrollY / maxScroll) * 100));
+      const root = document.documentElement;
+      const maxScroll = Math.max(1, root.scrollHeight - window.innerHeight);
+      const progress = Math.min(
+        100,
+        Math.max(0, (window.scrollY / maxScroll) * 100)
+      );
+
       setReaderProgress(progress);
 
-      // Keep a lightweight local resume point without requiring a login.
+      // Simpan posisi lokal.
       try {
-        localStorage.setItem(storageKey, String(Math.round(window.scrollY)));
+        localStorage.setItem(
+          storageKey,
+          String(Math.round(window.scrollY))
+        );
+
+        const activeComicForResume = MOCK_COMICS.find(
+          (comic) => comic.titleId === selectedComicId
+        );
+
+        if (activeComicForResume) {
+          const marker: HistoryItem = {
+            comicId: activeComicForResume.titleId,
+            userId: currentUser?.userId || 'guest',
+            comicTitle: activeComicForResume.title,
+            comicCover: activeComicForResume.coverImageUrl,
+            chapterNumber: selectedChapterNumber,
+            lastReadAt: Date.now(),
+            scrollY: Math.round(window.scrollY),
+            progress: Math.round(progress),
+            totalPages: activeChapter?.pages.length || 0,
+          };
+
+          localStorage.setItem(
+            'shiroko-continue-reading',
+            JSON.stringify(marker)
+          );
+
+          setLocalContinueReading(marker);
+
+          // Simpan progress ke Firestore secara throttled.
+          if (currentUser) {
+            if (cloudSaveTimer) clearTimeout(cloudSaveTimer);
+
+            cloudSaveTimer = setTimeout(async () => {
+              try {
+                const historyId = `${currentUser.userId}_${activeComicForResume.titleId}`;
+
+                await setDoc(
+                  doc(db, 'reading_history', historyId),
+                  {
+                    comicId: activeComicForResume.titleId,
+                    userId: currentUser.userId,
+                    comicTitle: activeComicForResume.title,
+                    comicCover: activeComicForResume.coverImageUrl,
+                    chapterNumber: selectedChapterNumber,
+                    lastReadAt: Date.now(),
+                    scrollY: Math.round(window.scrollY),
+                    progress: Math.round(progress),
+                    totalPages: activeChapter?.pages.length || 0,
+                  },
+                  { merge: true }
+                );
+              } catch (e) {
+                console.warn('Could not sync reading progress:', e);
+              }
+            }, 1500);
+          }
+        }
       } catch {
-        // Ignore storage restrictions/private browsing errors.
+        // Ignore storage restrictions.
       }
 
       setReaderControlsVisible(true);
+
       if (hideTimer) clearTimeout(hideTimer);
-      hideTimer = setTimeout(() => setReaderControlsVisible(false), 1800);
+
+      hideTimer = setTimeout(() => {
+        setReaderControlsVisible(false);
+      }, 1800);
     };
 
     window.addEventListener('scroll', updateReaderState, { passive: true });
     window.addEventListener('touchstart', updateReaderState, { passive: true });
     window.addEventListener('mousemove', updateReaderState, { passive: true });
+
     updateReaderState();
 
-    // Resume only when the saved position is meaningful; otherwise start at the top.
-    const saved = Number(localStorage.getItem(storageKey) || 0);
+    // Resume posisi terakhir.
+    let saved = 0;
+
+    try {
+      saved = Number(
+        localStorage.getItem(storageKey) || 0
+      );
+    } catch {
+      saved = 0;
+    }
+
+    // Jika login dan cloud punya posisi lebih baru, gunakan posisi cloud.
+    const cloudHistory = readingHistory.find(
+      (item) =>
+        item.comicId === selectedComicId &&
+        item.chapterNumber === selectedChapterNumber
+    );
+
+    if (
+      cloudHistory?.scrollY &&
+      cloudHistory.scrollY > saved
+    ) {
+      saved = cloudHistory.scrollY;
+    }
+
     const resumeTimer = window.setTimeout(() => {
       if (saved > 80 && window.scrollY < 20) {
-        window.scrollTo({ top: saved, behavior: 'smooth' });
+        window.scrollTo({
+          top: saved,
+          behavior: 'smooth',
+        });
       }
-    }, 120);
+    }, 180);
 
     return () => {
       window.removeEventListener('scroll', updateReaderState);
       window.removeEventListener('touchstart', updateReaderState);
       window.removeEventListener('mousemove', updateReaderState);
+
       if (hideTimer) clearTimeout(hideTimer);
+      if (cloudSaveTimer) clearTimeout(cloudSaveTimer);
+
       window.clearTimeout(resumeTimer);
     };
-  }, [selectedComicId, selectedChapterNumber]);
+  }, [
+    selectedComicId,
+    selectedChapterNumber,
+    currentUser,
+    readingHistory,
+    activeChapter?.pages.length,
+  ]);
 
   // Record reading history in Firestore
   const recordReadingSession = async (comic: Comic, chapterNum: number) => {
     if (!currentUser) return;
     try {
       const historyId = `${currentUser.userId}_${comic.titleId}`;
-      await setDoc(doc(db, 'reading_history', historyId), {
-        comicId: comic.titleId,
-        userId: currentUser.userId,
-        comicTitle: comic.title,
-        comicCover: comic.coverImageUrl,
-        chapterNumber: chapterNum,
-        lastReadAt: Date.now(),
-      });
+      const existing = readingHistory.find(
+        (item) => item.comicId === comic.titleId
+      );
+
+      await setDoc(
+        doc(db, 'reading_history', historyId),
+        {
+          comicId: comic.titleId,
+          userId: currentUser.userId,
+          comicTitle: comic.title,
+          comicCover: comic.coverImageUrl,
+          chapterNumber: chapterNum,
+          lastReadAt: Date.now(),
+          scrollY:
+            existing?.chapterNumber === chapterNum
+              ? existing.scrollY || 0
+              : 0,
+          progress:
+            existing?.chapterNumber === chapterNum
+              ? existing.progress || 0
+              : 0,
+          totalPages:
+            comic.chapters.find(
+              (chapter) => chapter.chapterNumber === chapterNum
+            )?.pages.length || 0,
+        },
+        { merge: true }
+      );
     } catch (e) {
       console.error('Error saving reading history:', e);
     }
   };
 
   const handleOpenReader = (comicId: string, chapterNum: number = 1) => {
+    const comic = MOCK_COMICS.find((c) => c.titleId === comicId);
+    if (!comic) return;
+
+    const existingHistory = readingHistory.find(
+      (item) => item.comicId === comicId
+    );
+
+    const savedScroll =
+      existingHistory?.chapterNumber === chapterNum
+        ? existingHistory.scrollY || 0
+        : Number(
+            localStorage.getItem(
+              `shiroko-reader:${comicId}:${chapterNum}`
+            ) || 0
+          );
+
+    const marker: HistoryItem = {
+      comicId: comic.titleId,
+      userId: currentUser?.userId || 'guest',
+      comicTitle: comic.title,
+      comicCover: comic.coverImageUrl,
+      chapterNumber: chapterNum,
+      lastReadAt: Date.now(),
+      scrollY: savedScroll,
+      progress:
+        existingHistory?.chapterNumber === chapterNum
+          ? existingHistory.progress || 0
+          : 0,
+      totalPages:
+        comic.chapters.find(
+          (chapter) => chapter.chapterNumber === chapterNum
+        )?.pages.length || 0,
+    };
+
+    try {
+      localStorage.setItem(
+        'shiroko-continue-reading',
+        JSON.stringify(marker)
+      );
+      setLocalContinueReading(marker);
+    } catch {
+      // Ignore storage restrictions.
+    }
+
     setSelectedComicId(comicId);
     setSelectedChapterNumber(chapterNum);
-    const comic = MOCK_COMICS.find((c) => c.titleId === comicId);
-    if (comic) {
-      recordReadingSession(comic, chapterNum);
-    }
+
+    recordReadingSession(comic, chapterNum);
+
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -211,6 +388,30 @@ export default function App() {
       console.error('Error deleting history:', e);
     }
   };
+
+  // Continue Reading: prioritaskan data Firestore saat login,
+  // lalu gunakan localStorage sebagai fallback untuk guest.
+  const latestHistory = [...readingHistory].sort(
+    (a, b) => b.lastReadAt - a.lastReadAt
+  )[0];
+
+  const continueItem = latestHistory || localContinueReading;
+
+  const continueComic = continueItem
+    ? MOCK_COMICS.find(
+        (comic) => comic.titleId === continueItem.comicId
+      )
+    : null;
+
+  const continueChapter = continueComic?.chapters.find(
+    (chapter) =>
+      chapter.chapterNumber === continueItem?.chapterNumber
+  );
+
+  const continueProgress = Math.min(
+    100,
+    Math.max(0, continueItem?.progress || 0)
+  );
 
   // Filtered comics
   const filteredComics = MOCK_COMICS.filter((comic) => {
@@ -692,6 +893,91 @@ export default function App() {
                 </div>
               </div>
             </section>
+
+            {/* Continue Reading */}
+            {continueItem && continueComic && (
+              <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-8">
+                <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-lg">
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div>
+                      <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                        Lanjutkan Membaca
+                      </h2>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Lanjut dari tempat terakhir kamu membaca
+                      </p>
+                    </div>
+
+                    <Clock className="w-5 h-5 text-blue-400 shrink-0" />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleOpenReader(
+                        continueComic.titleId,
+                        continueItem.chapterNumber
+                      )
+                    }
+                    className="w-full text-left group"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="relative w-20 h-28 sm:w-24 sm:h-32 rounded-xl overflow-hidden bg-slate-950 shrink-0">
+                        <img
+                          src={continueComic.coverImageUrl}
+                          alt={continueComic.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+
+                        <div className="absolute bottom-2 left-2 right-2">
+                          <span className="text-[10px] font-semibold text-white bg-black/50 backdrop-blur-sm rounded-md px-1.5 py-1">
+                            Bab {continueItem.chapterNumber}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-sm sm:text-base font-bold text-white truncate group-hover:text-blue-400 transition-colors">
+                          {continueComic.title}
+                        </h3>
+
+                        <p className="text-xs text-slate-400 mt-1">
+                          {continueChapter?.title || `Bab ${continueItem.chapterNumber}`}
+                        </p>
+
+                        <div className="mt-4">
+                          <div className="flex items-center justify-between text-[11px] mb-1.5">
+                            <span className="text-slate-400">
+                              Progress membaca
+                            </span>
+                            <span className="text-blue-400 font-semibold">
+                              {Math.round(continueProgress)}%
+                            </span>
+                          </div>
+
+                          <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-blue-500 rounded-full transition-all"
+                              style={{
+                                width: `${continueProgress}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-400">
+                          <BookOpen className="w-3.5 h-3.5" />
+                          Lanjutkan
+                          <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </section>
+            )}
 
             {/* Cuplikan Komik Populer / Sorotan */}
             <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">

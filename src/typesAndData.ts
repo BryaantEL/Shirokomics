@@ -72,6 +72,9 @@ export interface HistoryItem {
   comicCover: string;
   chapterNumber: number;
   lastReadAt: number;
+  scrollY?: number;
+  progress?: number;
+  totalPages?: number;
 }
 
 export interface BugReportItem {
