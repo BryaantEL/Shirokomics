@@ -376,7 +376,11 @@ export default function App() {
 
     recordReadingSession(comic, chapterNum);
 
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Jangan paksa kembali ke atas jika ada posisi baca yang tersimpan.
+    // Reader effect akan melakukan restore ke posisi terakhir.
+    if (savedScroll <= 80) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const handleClearHistoryItem = async (comicId: string) => {
