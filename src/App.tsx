@@ -137,19 +137,52 @@ export default function App() {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // Reader UX: progress, auto-hide controls, local resume,
+  // Reader UX: progress, auto-hide controls, resume position,
   // dan sinkronisasi progress ke Firestore.
   useEffect(() => {
     if (!selectedComicId) return;
 
     let hideTimer: ReturnType<typeof setTimeout> | undefined;
     let cloudSaveTimer: ReturnType<typeof setTimeout> | undefined;
+    let restoreTimer: number | undefined;
 
     const storageKey = `shiroko-reader:${selectedComicId}:${selectedChapterNumber}`;
 
-    const updateReaderState = () => {
+    // Ambil posisi tersimpan SEBELUM mulai menyimpan posisi baru.
+    let savedScroll = 0;
+
+    try {
+      savedScroll = Number(localStorage.getItem(storageKey) || 0);
+    } catch {
+      savedScroll = 0;
+    }
+
+    // Firestore boleh menjadi sumber posisi yang lebih baru.
+    const cloudHistory = readingHistory.find(
+      (item) =>
+        item.comicId === selectedComicId &&
+        item.chapterNumber === selectedChapterNumber
+    );
+
+    if (
+      cloudHistory?.scrollY &&
+      cloudHistory.scrollY > savedScroll
+    ) {
+      savedScroll = cloudHistory.scrollY;
+    }
+
+    let hasRestored = savedScroll <= 80;
+
+    const saveLocalAndCloud = () => {
+      // JANGAN menyimpan posisi sebelum restore selesai.
+      if (!hasRestored) return;
+
       const root = document.documentElement;
-      const maxScroll = Math.max(1, root.scrollHeight - window.innerHeight);
+      const maxScroll = Math.max(
+        1,
+        root.scrollHeight - window.innerHeight
+      );
+
       const progress = Math.min(
         100,
         Math.max(0, (window.scrollY / maxScroll) * 100)
@@ -157,7 +190,6 @@ export default function App() {
 
       setReaderProgress(progress);
 
-      // Simpan posisi lokal.
       try {
         localStorage.setItem(
           storageKey,
@@ -188,13 +220,15 @@ export default function App() {
 
           setLocalContinueReading(marker);
 
-          // Simpan progress ke Firestore secara throttled.
           if (currentUser) {
-            if (cloudSaveTimer) clearTimeout(cloudSaveTimer);
+            if (cloudSaveTimer) {
+              clearTimeout(cloudSaveTimer);
+            }
 
             cloudSaveTimer = setTimeout(async () => {
               try {
-                const historyId = `${currentUser.userId}_${activeComicForResume.titleId}`;
+                const historyId =
+                  `${currentUser.userId}_${activeComicForResume.titleId}`;
 
                 await setDoc(
                   doc(db, 'reading_history', historyId),
@@ -207,12 +241,16 @@ export default function App() {
                     lastReadAt: Date.now(),
                     scrollY: Math.round(window.scrollY),
                     progress: Math.round(progress),
-                    totalPages: activeChapter?.pages.length || 0,
+                    totalPages:
+                      activeChapter?.pages.length || 0,
                   },
                   { merge: true }
                 );
               } catch (e) {
-                console.warn('Could not sync reading progress:', e);
+                console.warn(
+                  'Could not sync reading progress:',
+                  e
+                );
               }
             }, 1500);
           }
@@ -230,55 +268,89 @@ export default function App() {
       }, 1800);
     };
 
-    window.addEventListener('scroll', updateReaderState, { passive: true });
-    window.addEventListener('touchstart', updateReaderState, { passive: true });
-    window.addEventListener('mousemove', updateReaderState, { passive: true });
+    const handleReaderActivity = () => {
+      saveLocalAndCloud();
+    };
 
-    updateReaderState();
-
-    // Resume posisi terakhir.
-    let saved = 0;
-
-    try {
-      saved = Number(
-        localStorage.getItem(storageKey) || 0
-      );
-    } catch {
-      saved = 0;
-    }
-
-    // Jika login dan cloud punya posisi lebih baru, gunakan posisi cloud.
-    const cloudHistory = readingHistory.find(
-      (item) =>
-        item.comicId === selectedComicId &&
-        item.chapterNumber === selectedChapterNumber
+    window.addEventListener(
+      'scroll',
+      handleReaderActivity,
+      { passive: true }
     );
 
-    if (
-      cloudHistory?.scrollY &&
-      cloudHistory.scrollY > saved
-    ) {
-      saved = cloudHistory.scrollY;
-    }
+    window.addEventListener(
+      'touchstart',
+      handleReaderActivity,
+      { passive: true }
+    );
 
-    const resumeTimer = window.setTimeout(() => {
-      if (saved > 80 && window.scrollY < 20) {
-        window.scrollTo({
-          top: saved,
-          behavior: 'smooth',
-        });
+    window.addEventListener(
+      'mousemove',
+      handleReaderActivity,
+      { passive: true }
+    );
+
+    // Restore setelah gambar/layout mulai tersedia.
+    const restorePosition = () => {
+      if (savedScroll <= 80) {
+        hasRestored = true;
+        saveLocalAndCloud();
+        return;
       }
-    }, 180);
+
+      // Tunggu sampai document cukup tinggi untuk posisi yang diminta.
+      const maxScroll =
+        document.documentElement.scrollHeight -
+        window.innerHeight;
+
+      if (maxScroll >= savedScroll - 100) {
+        window.scrollTo({
+          top: savedScroll,
+          behavior: 'auto',
+        });
+
+        hasRestored = true;
+
+        // Hitung progress setelah posisi benar-benar dipulihkan.
+        requestAnimationFrame(() => {
+          saveLocalAndCloud();
+        });
+
+        return;
+      }
+
+      // Gambar belum selesai loading. Coba lagi.
+      restoreTimer = window.setTimeout(
+        restorePosition,
+        250
+      );
+    };
+
+    // Jangan langsung menyimpan posisi 0.
+    restoreTimer = window.setTimeout(
+      restorePosition,
+      300
+    );
 
     return () => {
-      window.removeEventListener('scroll', updateReaderState);
-      window.removeEventListener('touchstart', updateReaderState);
-      window.removeEventListener('mousemove', updateReaderState);
+      window.removeEventListener(
+        'scroll',
+        handleReaderActivity
+      );
+
+      window.removeEventListener(
+        'touchstart',
+        handleReaderActivity
+      );
+
+      window.removeEventListener(
+        'mousemove',
+        handleReaderActivity
+      );
 
       if (hideTimer) clearTimeout(hideTimer);
       if (cloudSaveTimer) clearTimeout(cloudSaveTimer);
-
-      window.clearTimeout(resumeTimer);
+      if (restoreTimer) clearTimeout(restoreTimer);
     };
   }, [
     selectedComicId,
