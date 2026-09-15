@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { 
   MOCK_COMICS, 
@@ -55,6 +55,37 @@ import {
 type NavTab = 'home' | 'comics' | 'history' | 'favorites' | 'faq' | 'report';
 type ComicSort = 'newest' | 'oldest' | 'popular' | 'az' | 'za';
 
+interface ResumeState {
+  scrollY: number;
+  progress: number;
+  lastReadAt: number;
+}
+
+const normalizeResumeState = (value: Partial<ResumeState> | number | null | undefined): ResumeState => {
+  const rawScrollY = typeof value === 'number' ? value : Number(value?.scrollY) || 0;
+  const rawProgress = typeof value === 'number' ? 0 : Number(value?.progress) || 0;
+  const progress = Math.min(100, Math.max(0, rawProgress));
+  return {
+    scrollY: progress === 0 ? 0 : Math.max(0, rawScrollY),
+    progress,
+    lastReadAt: typeof value === 'number' ? 0 : Number(value?.lastReadAt) || 0,
+  };
+};
+
+const readLocalResumeState = (storageKey: string): ResumeState => {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return normalizeResumeState(null);
+    try {
+      return normalizeResumeState(JSON.parse(raw) as Partial<ResumeState> | number);
+    } catch {
+      return normalizeResumeState(Number(raw) || 0);
+    }
+  } catch {
+    return normalizeResumeState(null);
+  }
+};
+
 export default function App() {
   const { currentUser, isLoggedIn, logout } = useAuth();
 
@@ -69,6 +100,7 @@ export default function App() {
   const [readerProgress, setReaderProgress] = useState<number>(0);
   const [readerControlsVisible, setReaderControlsVisible] = useState<boolean>(true);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState<boolean>(false);
+  const continueResumeOverrideRef = useRef<ResumeState | null>(null);
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -84,7 +116,14 @@ export default function App() {
   const [localContinueReading, setLocalContinueReading] = useState<HistoryItem | null>(() => {
     try {
       const saved = localStorage.getItem('shiroko-continue-reading');
-      return saved ? (JSON.parse(saved) as HistoryItem) : null;
+      if (!saved) return null;
+      const parsed = JSON.parse(saved) as HistoryItem;
+      const normalized = normalizeResumeState(parsed);
+      return {
+        ...parsed,
+        scrollY: normalized.scrollY,
+        progress: normalized.progress,
+      };
     } catch {
       return null;
     }
@@ -141,237 +180,154 @@ export default function App() {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // Reader UX: progress, auto-hide controls, resume position,
-  // dan sinkronisasi progress ke Firestore.
+  // Reader UX: restore once per comic/chapter, then track the user's actual position.
   useEffect(() => {
     if (!selectedComicId) return;
 
     let hideTimer: ReturnType<typeof setTimeout> | undefined;
     let cloudSaveTimer: ReturnType<typeof setTimeout> | undefined;
     let restoreTimer: number | undefined;
+    let hasRestored = false;
 
     const storageKey = `shiroko-reader:${selectedComicId}:${selectedChapterNumber}`;
-
-    // Ambil posisi tersimpan SEBELUM mulai menyimpan posisi baru.
-    let savedScroll = 0;
-
-    try {
-      savedScroll = Number(localStorage.getItem(storageKey) || 0);
-    } catch {
-      savedScroll = 0;
-    }
-
-    // Firestore boleh menjadi sumber posisi yang lebih baru.
+    const activeComicForResume = MOCK_COMICS.find((comic) => comic.titleId === selectedComicId);
     const cloudHistory = readingHistory.find(
-      (item) =>
-        item.comicId === selectedComicId &&
-        item.chapterNumber === selectedChapterNumber
+      (item) => item.comicId === selectedComicId && item.chapterNumber === selectedChapterNumber
     );
 
-    if (
-      cloudHistory?.scrollY &&
-      cloudHistory.scrollY > savedScroll
-    ) {
-      savedScroll = cloudHistory.scrollY;
-    }
+    const localResume = readLocalResumeState(storageKey);
+    const cloudResume: ResumeState | null = cloudHistory
+      ? normalizeResumeState(cloudHistory)
+      : null;
+    const override = continueResumeOverrideRef.current;
+    continueResumeOverrideRef.current = null;
+    const candidates = [override, localResume, cloudResume].filter(
+      (candidate): candidate is ResumeState => candidate !== null
+    );
+    const savedResume = candidates.reduce(
+      (latest, candidate) => candidate.lastReadAt > latest.lastReadAt ? candidate : latest,
+      { scrollY: 0, progress: 0, lastReadAt: 0 }
+    );
+    const savedScroll = savedResume.progress === 0 ? 0 : savedResume.scrollY;
 
-    let hasRestored = savedScroll <= 80;
+    const saveCurrentPosition = () => {
+      if (!hasRestored || !activeComicForResume) return;
 
-    const saveLocalAndCloud = () => {
-      // JANGAN menyimpan posisi sebelum restore selesai.
-      if (!hasRestored) return;
-
-      const root = document.documentElement;
-      const maxScroll = Math.max(
-        1,
-        root.scrollHeight - window.innerHeight
-      );
-
-      const progress = Math.min(
-        100,
-        Math.max(0, (window.scrollY / maxScroll) * 100)
-      );
-
+      const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      const progress = maxScroll === 0
+        ? 0
+        : Math.min(100, Math.max(0, (window.scrollY / maxScroll) * 100));
+      const scrollY = Math.round(window.scrollY);
+      const lastReadAt = Date.now();
       setReaderProgress(progress);
 
+      const marker: HistoryItem = {
+        comicId: activeComicForResume.titleId,
+        userId: currentUser?.userId || 'guest',
+        comicTitle: activeComicForResume.title,
+        comicCover: activeComicForResume.coverImageUrl,
+        chapterNumber: selectedChapterNumber,
+        lastReadAt,
+        scrollY,
+        progress: Math.round(progress),
+        totalPages: activeChapter?.pages.length || 0,
+      };
+
       try {
-        localStorage.setItem(
-          storageKey,
-          String(Math.round(window.scrollY))
-        );
-
-        const activeComicForResume = MOCK_COMICS.find(
-          (comic) => comic.titleId === selectedComicId
-        );
-
-        if (activeComicForResume) {
-          const marker: HistoryItem = {
-            comicId: activeComicForResume.titleId,
-            userId: currentUser?.userId || 'guest',
-            comicTitle: activeComicForResume.title,
-            comicCover: activeComicForResume.coverImageUrl,
-            chapterNumber: selectedChapterNumber,
-            lastReadAt: Date.now(),
-            scrollY: Math.round(window.scrollY),
-            progress: Math.round(progress),
-            totalPages: activeChapter?.pages.length || 0,
-          };
-
-          localStorage.setItem(
-            'shiroko-continue-reading',
-            JSON.stringify(marker)
-          );
-
-          setLocalContinueReading(marker);
-
-          if (currentUser) {
-            if (cloudSaveTimer) {
-              clearTimeout(cloudSaveTimer);
-            }
-
-            cloudSaveTimer = setTimeout(async () => {
-              try {
-                const historyId =
-                  `${currentUser.userId}_${activeComicForResume.titleId}`;
-
-                await setDoc(
-                  doc(db, 'reading_history', historyId),
-                  {
-                    comicId: activeComicForResume.titleId,
-                    userId: currentUser.userId,
-                    comicTitle: activeComicForResume.title,
-                    comicCover: activeComicForResume.coverImageUrl,
-                    chapterNumber: selectedChapterNumber,
-                    lastReadAt: Date.now(),
-                    scrollY: Math.round(window.scrollY),
-                    progress: Math.round(progress),
-                    totalPages:
-                      activeChapter?.pages.length || 0,
-                  },
-                  { merge: true }
-                );
-              } catch (e) {
-                console.warn(
-                  'Could not sync reading progress:',
-                  e
-                );
-              }
-            }, 1500);
-          }
-        }
+        localStorage.setItem(storageKey, JSON.stringify({ scrollY, progress: Math.round(progress), lastReadAt }));
+        localStorage.setItem('shiroko-continue-reading', JSON.stringify(marker));
+        setLocalContinueReading(marker);
       } catch {
         // Ignore storage restrictions.
       }
 
+      if (currentUser) {
+        if (cloudSaveTimer) clearTimeout(cloudSaveTimer);
+        cloudSaveTimer = setTimeout(async () => {
+          try {
+            const historyId = `${currentUser.userId}_${activeComicForResume.titleId}`;
+            await setDoc(doc(db, 'reading_history', historyId), {
+              comicId: activeComicForResume.titleId,
+              userId: currentUser.userId,
+              comicTitle: activeComicForResume.title,
+              comicCover: activeComicForResume.coverImageUrl,
+              chapterNumber: selectedChapterNumber,
+              lastReadAt,
+              scrollY,
+              progress: Math.round(progress),
+              totalPages: activeChapter?.pages.length || 0,
+            }, { merge: true });
+          } catch (e) {
+            console.warn('Could not sync reading progress:', e);
+          }
+        }, 1500);
+      }
+
       setReaderControlsVisible(true);
-
       if (hideTimer) clearTimeout(hideTimer);
-
-      hideTimer = setTimeout(() => {
-        setReaderControlsVisible(false);
-      }, 1800);
+      hideTimer = setTimeout(() => setReaderControlsVisible(false), 1800);
     };
 
-    const handleReaderActivity = () => {
-      saveLocalAndCloud();
+    const handleReaderScroll = () => {
+      // A non-zero scroll before the timer means the reader was manually moved.
+      // Treat it as the session's initial position and never snap it back.
+      if (!hasRestored && window.scrollY > 0) hasRestored = true;
+      saveCurrentPosition();
     };
 
-    window.addEventListener(
-      'scroll',
-      handleReaderActivity,
-      { passive: true }
-    );
+    const handleReaderPointerActivity = () => {
+      saveCurrentPosition();
+    };
 
-    window.addEventListener(
-      'touchstart',
-      handleReaderActivity,
-      { passive: true }
-    );
-
-    window.addEventListener(
-      'mousemove',
-      handleReaderActivity,
-      { passive: true }
-    );
-
-    // Restore setelah gambar/layout mulai tersedia.
     const restorePosition = () => {
-      if (savedScroll <= 80) {
+      if (hasRestored) return;
+      const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      if (savedScroll === 0) {
+        window.scrollTo({ top: 0, behavior: 'auto' });
         hasRestored = true;
-        saveLocalAndCloud();
+        requestAnimationFrame(saveCurrentPosition);
         return;
       }
-
-      // Tunggu sampai document cukup tinggi untuk posisi yang diminta.
-      const maxScroll =
-        document.documentElement.scrollHeight -
-        window.innerHeight;
-
       if (maxScroll >= savedScroll - 100) {
-        window.scrollTo({
-          top: savedScroll,
-          behavior: 'auto',
-        });
-
+        window.scrollTo({ top: savedScroll, behavior: 'auto' });
         hasRestored = true;
-
-        // Hitung progress setelah posisi benar-benar dipulihkan.
-        requestAnimationFrame(() => {
-          saveLocalAndCloud();
-        });
-
+        requestAnimationFrame(saveCurrentPosition);
         return;
       }
-
-      // Gambar belum selesai loading. Coba lagi.
-      restoreTimer = window.setTimeout(
-        restorePosition,
-        250
-      );
+      restoreTimer = window.setTimeout(restorePosition, 250);
     };
 
-    // Jangan langsung menyimpan posisi 0.
-    restoreTimer = window.setTimeout(
-      restorePosition,
-      300
-    );
+    window.addEventListener('scroll', handleReaderScroll, { passive: true });
+    window.addEventListener('touchstart', handleReaderScroll, { passive: true });
+    window.addEventListener('mousemove', handleReaderPointerActivity, { passive: true });
+    restoreTimer = window.setTimeout(restorePosition, 300);
 
     return () => {
-      window.removeEventListener(
-        'scroll',
-        handleReaderActivity
-      );
-
-      window.removeEventListener(
-        'touchstart',
-        handleReaderActivity
-      );
-
-      window.removeEventListener(
-        'mousemove',
-        handleReaderActivity
-      );
-
+      window.removeEventListener('scroll', handleReaderScroll);
+      window.removeEventListener('touchstart', handleReaderScroll);
+      window.removeEventListener('mousemove', handleReaderPointerActivity);
       if (hideTimer) clearTimeout(hideTimer);
       if (cloudSaveTimer) clearTimeout(cloudSaveTimer);
       if (restoreTimer) clearTimeout(restoreTimer);
     };
-  }, [
-    selectedComicId,
-    selectedChapterNumber,
-    currentUser,
-    readingHistory,
-    activeChapter?.pages.length,
-  ]);
+  }, [selectedComicId, selectedChapterNumber]);
 
   // Record reading history in Firestore
-  const recordReadingSession = async (comic: Comic, chapterNum: number) => {
+  const recordReadingSession = async (
+    comic: Comic,
+    chapterNum: number,
+    resumeState?: ResumeState
+  ) => {
     if (!currentUser) return;
     try {
       const historyId = `${currentUser.userId}_${comic.titleId}`;
       const existing = readingHistory.find(
         (item) => item.comicId === comic.titleId
       );
+      const existingState = existing?.chapterNumber === chapterNum
+        ? normalizeResumeState(existing)
+        : normalizeResumeState(null);
+      const state = resumeState || existingState;
 
       await setDoc(
         doc(db, 'reading_history', historyId),
@@ -382,14 +338,8 @@ export default function App() {
           comicCover: comic.coverImageUrl,
           chapterNumber: chapterNum,
           lastReadAt: Date.now(),
-          scrollY:
-            existing?.chapterNumber === chapterNum
-              ? existing.scrollY || 0
-              : 0,
-          progress:
-            existing?.chapterNumber === chapterNum
-              ? existing.progress || 0
-              : 0,
+          scrollY: state.scrollY,
+          progress: state.progress,
           totalPages:
             comic.chapters.find(
               (chapter) => chapter.chapterNumber === chapterNum
@@ -402,7 +352,11 @@ export default function App() {
     }
   };
 
-  const handleOpenReader = (comicId: string, chapterNum: number = 1) => {
+  const handleOpenReader = (
+    comicId: string,
+    chapterNum: number = 1,
+    resumeOverride?: ResumeState
+  ) => {
     const comic = MOCK_COMICS.find((c) => c.titleId === comicId);
     if (!comic) return;
 
@@ -410,14 +364,18 @@ export default function App() {
       (item) => item.comicId === comicId
     );
 
-    const savedScroll =
-      existingHistory?.chapterNumber === chapterNum
-        ? existingHistory.scrollY || 0
-        : Number(
-            localStorage.getItem(
-              `shiroko-reader:${comicId}:${chapterNum}`
-            ) || 0
-          );
+    const storageKey = `shiroko-reader:${comicId}:${chapterNum}`;
+    const localResume = readLocalResumeState(storageKey);
+    const cloudResume = existingHistory?.chapterNumber === chapterNum
+      ? normalizeResumeState(existingHistory)
+      : null;
+    const resolvedResume = resumeOverride || [localResume, cloudResume]
+      .filter((candidate): candidate is ResumeState => candidate !== null)
+      .reduce(
+        (latest, candidate) => candidate.lastReadAt > latest.lastReadAt ? candidate : latest,
+        normalizeResumeState(null)
+      );
+    const savedScroll = resolvedResume.progress === 0 ? 0 : resolvedResume.scrollY;
 
     const marker: HistoryItem = {
       comicId: comic.titleId,
@@ -427,10 +385,7 @@ export default function App() {
       chapterNumber: chapterNum,
       lastReadAt: Date.now(),
       scrollY: savedScroll,
-      progress:
-        existingHistory?.chapterNumber === chapterNum
-          ? existingHistory.progress || 0
-          : 0,
+      progress: resolvedResume.progress,
       totalPages:
         comic.chapters.find(
           (chapter) => chapter.chapterNumber === chapterNum
@@ -442,6 +397,14 @@ export default function App() {
         'shiroko-continue-reading',
         JSON.stringify(marker)
       );
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({
+          scrollY: marker.scrollY,
+          progress: marker.progress,
+          lastReadAt: marker.lastReadAt,
+        })
+      );
       setLocalContinueReading(marker);
     } catch {
       // Ignore storage restrictions.
@@ -450,13 +413,10 @@ export default function App() {
     setSelectedComicId(comicId);
     setSelectedChapterNumber(chapterNum);
 
-    recordReadingSession(comic, chapterNum);
+    recordReadingSession(comic, chapterNum, resolvedResume);
 
     // Jangan paksa kembali ke atas jika ada posisi baca yang tersimpan.
     // Reader effect akan melakukan restore ke posisi terakhir.
-    if (savedScroll <= 80) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
   };
 
   const handleOpenComicDetail = (comicId: string) => {
@@ -466,9 +426,13 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'auto' });
   };
 
-  const handleOpenReaderFromDetail = (comicId: string, chapterNum: number = 1) => {
+  const handleOpenReaderFromDetail = (
+    comicId: string,
+    chapterNum: number = 1,
+    resumeOverride?: ResumeState
+  ) => {
     setSelectedComicDetailId(null);
-    handleOpenReader(comicId, chapterNum);
+    handleOpenReader(comicId, chapterNum, resumeOverride);
   };
 
   const handleToggleFavorite = async (comic: Comic) => {
@@ -851,7 +815,11 @@ export default function App() {
                 <section className="flex flex-col sm:flex-row gap-3">
                   <button
                     type="button"
-                    onClick={() => handleOpenReaderFromDetail(detailComic.titleId, detailHistory?.chapterNumber || 1)}
+                    onClick={() => handleOpenReaderFromDetail(
+                      detailComic.titleId,
+                      detailHistory?.chapterNumber || 1,
+                      detailHistory ? normalizeResumeState(detailHistory) : undefined
+                    )}
                     className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shadow-lg shadow-blue-900/30 transition-colors cursor-pointer"
                   >
                     <BookOpen className="w-4 h-4" />
@@ -885,7 +853,11 @@ export default function App() {
                         </div>
                         <button
                           type="button"
-                          onClick={() => handleOpenReaderFromDetail(detailComic.titleId, detailHistory.chapterNumber)}
+                          onClick={() => handleOpenReaderFromDetail(
+                            detailComic.titleId,
+                            detailHistory.chapterNumber,
+                            normalizeResumeState(detailHistory)
+                          )}
                           className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold text-white transition-colors cursor-pointer"
                         >
                           Lanjutkan
@@ -1005,7 +977,6 @@ export default function App() {
                           const next = Math.max(1, selectedChapterNumber - 1);
                           setSelectedChapterNumber(next);
                           recordReadingSession(activeComic, next);
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
                         className="p-2 rounded-xl text-white/80 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                         aria-label="Bab sebelumnya"
@@ -1030,7 +1001,6 @@ export default function App() {
                           const next = Math.min(activeComic.chapters.length, selectedChapterNumber + 1);
                           setSelectedChapterNumber(next);
                           recordReadingSession(activeComic, next);
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
                         className="p-2 rounded-xl text-white/80 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                         aria-label="Bab berikutnya"
@@ -1059,7 +1029,6 @@ export default function App() {
                           onClick={() => {
                             setSelectedChapterNumber(ch.chapterNumber);
                             recordReadingSession(activeComic, ch.chapterNumber);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
                             document.getElementById('reader-chapter-menu')?.classList.add('hidden');
                           }}
                           className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
@@ -1138,7 +1107,6 @@ export default function App() {
                         const next = Math.max(1, selectedChapterNumber - 1);
                         setSelectedChapterNumber(next);
                         recordReadingSession(activeComic, next);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
                       className="px-4 py-2.5 rounded-xl text-xs font-bold border border-slate-700 bg-slate-900 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-800 cursor-pointer"
                     >
@@ -1151,7 +1119,6 @@ export default function App() {
                         const next = Math.min(activeComic.chapters.length, selectedChapterNumber + 1);
                         setSelectedChapterNumber(next);
                         recordReadingSession(activeComic, next);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
                       className="px-4 py-2.5 rounded-xl text-xs font-bold bg-blue-600 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-500 cursor-pointer shadow-lg shadow-blue-500/20"
                     >
@@ -1248,7 +1215,8 @@ export default function App() {
                     onClick={() =>
                       handleOpenReader(
                         continueComic.titleId,
-                        continueItem.chapterNumber
+                        continueItem.chapterNumber,
+                        normalizeResumeState(continueItem)
                       )
                     }
                     className="w-full text-left group"
