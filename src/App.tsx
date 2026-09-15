@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { 
   MOCK_COMICS, 
@@ -53,6 +53,7 @@ import {
 } from 'lucide-react';
 
 type NavTab = 'home' | 'comics' | 'history' | 'favorites' | 'faq' | 'report';
+type ComicSort = 'newest' | 'oldest' | 'popular' | 'az' | 'za';
 
 export default function App() {
   const { currentUser, isLoggedIn, logout } = useAuth();
@@ -72,7 +73,8 @@ export default function App() {
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedGenre, setSelectedGenre] = useState<string>('Semua');
-  const [selectedCategory, setSelectedCategory] = useState<'all' | 'newest' | 'oldest' | 'popular'>('all');
+  const [selectedStatus, setSelectedStatus] = useState<Comic['status'] | 'Semua'>('Semua');
+  const [selectedSort, setSelectedSort] = useState<ComicSort>('newest');
 
   // Firestore reading history & favorites for current user
   const [readingHistory, setReadingHistory] = useState<HistoryItem[]>([]);
@@ -539,14 +541,42 @@ export default function App() {
     ? userFavorites.some((favorite) => favorite.comicId === detailComic.titleId)
     : false;
 
-  // Filtered comics
-  const filteredComics = MOCK_COMICS.filter((comic) => {
-    const matchesQuery = comic.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      comic.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesGenre = selectedGenre === 'Semua' || comic.genre.includes(selectedGenre);
-    const matchesCat = selectedCategory === 'all' || comic.category === selectedCategory;
-    return matchesQuery && matchesGenre && matchesCat;
-  });
+  const normalizedSearchQuery = searchQuery.trim().replace(/\s+/g, ' ').toLowerCase();
+
+  const filteredComics = useMemo(() => {
+    const result = MOCK_COMICS.filter((comic) => {
+      const searchableText = [comic.title, comic.author, ...comic.genre]
+        .join(' ')
+        .toLowerCase();
+      const matchesQuery = !normalizedSearchQuery || searchableText.includes(normalizedSearchQuery);
+      const matchesGenre = selectedGenre === 'Semua' || comic.genre.includes(selectedGenre);
+      const matchesStatus = selectedStatus === 'Semua' || comic.status === selectedStatus;
+      return matchesQuery && matchesGenre && matchesStatus;
+    });
+
+    return [...result].sort((first, second) => {
+      switch (selectedSort) {
+        case 'oldest':
+          return first.releaseYear - second.releaseYear;
+        case 'popular':
+          return second.views - first.views;
+        case 'az':
+          return first.title.localeCompare(second.title, 'id');
+        case 'za':
+          return second.title.localeCompare(first.title, 'id');
+        case 'newest':
+        default:
+          return second.releaseYear - first.releaseYear;
+      }
+    });
+  }, [normalizedSearchQuery, selectedGenre, selectedStatus, selectedSort]);
+
+  const resetComicFilters = () => {
+    setSearchQuery('');
+    setSelectedGenre('Semua');
+    setSelectedStatus('Semua');
+    setSelectedSort('newest');
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-['Plus_Jakarta_Sans',sans-serif]">
@@ -1380,58 +1410,55 @@ export default function App() {
                 </p>
               </div>
 
-              {/* Baris Pencarian & Kategori */}
-              <div className="flex flex-col sm:flex-row gap-3">
-                {/* Search Bar (Indonesian: "Cari Komik") */}
-                <div className="relative flex-1">
+              {/* Search, filter, dan sort controls */}
+              <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5">
+                <div className="flex flex-col lg:flex-row gap-3">
+                  <div className="relative flex-1">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     id="search-comic-input"
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Cari Komik berdasarkan judul atau kata kunci..."
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-xs sm:text-sm"
+                    placeholder="Cari komik berdasarkan judul, author, atau genre..."
+                    aria-label="Cari komik berdasarkan judul, author, atau genre"
+                    className="w-full pl-10 pr-16 py-3 rounded-xl bg-slate-950 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-xs sm:text-sm"
                   />
                   {searchQuery && (
                     <button
+                      type="button"
                       onClick={() => setSearchQuery('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs cursor-pointer"
                     >
-                      Reset
+                      Clear
                     </button>
                   )}
                 </div>
 
-                {/* Filter Kategori (Terbaru / Klasik / Semua) */}
-                <div className="flex gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-                  {[
-                    { id: 'all', label: 'Semua Era' },
-                    { id: 'newest', label: 'Terbaru' },
-                    { id: 'oldest', label: 'Klasik' },
-                    { id: 'popular', label: 'Populer' },
-                  ].map((cat) => (
-                    <button
-                      key={cat.id}
-                      onClick={() => setSelectedCategory(cat.id as any)}
-                      className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                        selectedCategory === cat.id
-                          ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
-                          : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700'
-                      }`}
+                  <label className="flex items-center gap-2 text-xs text-slate-300">
+                    <span className="sr-only">Urutkan komik</span>
+                    <select
+                      id="sort-comic-select"
+                      value={selectedSort}
+                      onChange={(e) => setSelectedSort(e.target.value as ComicSort)}
+                      className="w-full lg:w-auto min-w-40 px-3 py-3 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-blue-500 cursor-pointer"
+                      aria-label="Urutkan komik"
                     >
-                      {cat.label}
-                    </button>
-                  ))}
+                      <option value="newest">Terbaru</option>
+                      <option value="oldest">Terlama</option>
+                      <option value="popular">Terpopuler</option>
+                      <option value="az">A-Z</option>
+                      <option value="za">Z-A</option>
+                    </select>
+                  </label>
                 </div>
-              </div>
 
-              {/* Genre Filter Pills (Indonesian: "Filter Genre") */}
-              <div className="space-y-1.5">
-                <span className="text-xs font-semibold text-slate-400">Filter Genre:</span>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold text-slate-400">Genre</span>
+                  <div className="flex flex-wrap gap-1.5">
                   {allGenres.map((g) => (
                     <button
+                      type="button"
                       key={g}
                       id={`btn-filter-genre-${g}`}
                       onClick={() => setSelectedGenre(g)}
@@ -1444,23 +1471,49 @@ export default function App() {
                       {g}
                     </button>
                   ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-semibold text-slate-400">Status</span>
+                    {(['Semua', 'Tamat', 'Sedang Rilis'] as const).map((status) => (
+                      <button
+                        type="button"
+                        key={status}
+                        onClick={() => setSelectedStatus(status)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${selectedStatus === status ? 'bg-blue-600 text-white' : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-slate-200'}`}
+                      >
+                        {status}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={resetComicFilters}
+                    className="sm:ml-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-slate-300 border border-slate-700 hover:border-blue-500 hover:text-blue-300 transition-colors cursor-pointer"
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                    Reset Filter
+                  </button>
                 </div>
               </div>
             </div>
 
             {/* Comic Grid */}
+            <p className="text-xs text-slate-400">
+              Menampilkan <span className="font-bold text-slate-200">{filteredComics.length}</span> dari {MOCK_COMICS.length} komik
+            </p>
             {filteredComics.length === 0 ? (
               <div className="p-12 text-center bg-slate-900/50 border border-slate-800 rounded-2xl space-y-3">
                 <BookOpen className="w-8 h-8 text-slate-500 mx-auto" />
                 <p className="text-sm font-semibold text-white">Tidak ada komik yang sesuai</p>
                 <p className="text-xs text-slate-400">
-                  Coba ubah kata kunci pencarian atau reset filter genre.
+                  Coba ubah kata kunci atau reset filter yang sedang aktif.
                 </p>
                 <button
                   onClick={() => {
-                    setSearchQuery('');
-                    setSelectedGenre('Semua');
-                    setSelectedCategory('all');
+                    resetComicFilters();
                   }}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg cursor-pointer"
                 >
