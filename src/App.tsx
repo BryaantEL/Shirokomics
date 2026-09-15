@@ -60,12 +60,14 @@ export default function App() {
   // Navigation & Routing State
   const [currentTab, setCurrentTab] = useState<NavTab>('home');
   const [selectedComicId, setSelectedComicId] = useState<string | null>(null);
+  const [selectedComicDetailId, setSelectedComicDetailId] = useState<string | null>(null);
   const [selectedChapterNumber, setSelectedChapterNumber] = useState<number>(1);
   const [readerTheme, setReaderTheme] = useState<'dark' | 'light'>('dark');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [readerProgress, setReaderProgress] = useState<number>(0);
   const [readerControlsVisible, setReaderControlsVisible] = useState<boolean>(true);
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState<boolean>(false);
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -455,6 +457,45 @@ export default function App() {
     }
   };
 
+  const handleOpenComicDetail = (comicId: string) => {
+    if (!MOCK_COMICS.some((comic) => comic.titleId === comicId)) return;
+    setSelectedComicId(null);
+    setSelectedComicDetailId(comicId);
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  };
+
+  const handleOpenReaderFromDetail = (comicId: string, chapterNum: number = 1) => {
+    setSelectedComicDetailId(null);
+    handleOpenReader(comicId, chapterNum);
+  };
+
+  const handleToggleFavorite = async (comic: Comic) => {
+    if (!currentUser) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+
+    const isFavorite = userFavorites.some((favorite) => favorite.comicId === comic.titleId);
+    const favoriteId = `${currentUser.userId}_${comic.titleId}`;
+
+    try {
+      if (isFavorite) {
+        await deleteDoc(doc(db, 'favorites', favoriteId));
+      } else {
+        await setDoc(doc(db, 'favorites', favoriteId), {
+          comicId: comic.titleId,
+          userId: currentUser.userId,
+          comicTitle: comic.title,
+          comicCover: comic.coverImageUrl,
+          genre: comic.genre,
+          addedAt: Date.now(),
+        });
+      }
+    } catch (e) {
+      console.error('Error toggling favorite:', e);
+    }
+  };
+
   const handleClearHistoryItem = async (comicId: string) => {
     if (!currentUser) return;
     try {
@@ -489,6 +530,15 @@ export default function App() {
     Math.max(0, continueItem?.progress || 0)
   );
 
+  const detailComic = MOCK_COMICS.find((comic) => comic.titleId === selectedComicDetailId) || null;
+  const detailHistory = detailComic
+    ? readingHistory.find((item) => item.comicId === detailComic.titleId) ||
+      (localContinueReading?.comicId === detailComic.titleId ? localContinueReading : null)
+    : null;
+  const detailFavorite = detailComic
+    ? userFavorites.some((favorite) => favorite.comicId === detailComic.titleId)
+    : false;
+
   // Filtered comics
   const filteredComics = MOCK_COMICS.filter((comic) => {
     const matchesQuery = comic.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -508,6 +558,7 @@ export default function App() {
             id="brand-logo-btn"
             onClick={() => {
               setSelectedComicId(null);
+              setSelectedComicDetailId(null);
               setCurrentTab('home');
             }}
             className="flex items-center gap-3 group text-left cursor-pointer"
@@ -535,10 +586,11 @@ export default function App() {
               id="nav-tab-home"
               onClick={() => {
                 setSelectedComicId(null);
+                setSelectedComicDetailId(null);
                 setCurrentTab('home');
               }}
               className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                currentTab === 'home' && !selectedComicId
+                currentTab === 'home' && !selectedComicId && !selectedComicDetailId
                   ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
                   : 'text-slate-300 hover:text-white hover:bg-slate-900'
               }`}
@@ -549,10 +601,11 @@ export default function App() {
               id="nav-tab-comics"
               onClick={() => {
                 setSelectedComicId(null);
+                setSelectedComicDetailId(null);
                 setCurrentTab('comics');
               }}
               className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                currentTab === 'comics' && !selectedComicId
+                currentTab === 'comics' && !selectedComicId && !selectedComicDetailId
                   ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
                   : 'text-slate-300 hover:text-white hover:bg-slate-900'
               }`}
@@ -563,10 +616,11 @@ export default function App() {
               id="nav-tab-favorites"
               onClick={() => {
                 setSelectedComicId(null);
+                setSelectedComicDetailId(null);
                 setCurrentTab('favorites');
               }}
               className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                currentTab === 'favorites' && !selectedComicId
+                currentTab === 'favorites' && !selectedComicId && !selectedComicDetailId
                   ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
                   : 'text-slate-300 hover:text-white hover:bg-slate-900'
               }`}
@@ -583,10 +637,11 @@ export default function App() {
               id="nav-tab-history"
               onClick={() => {
                 setSelectedComicId(null);
+                setSelectedComicDetailId(null);
                 setCurrentTab('history');
               }}
               className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                currentTab === 'history' && !selectedComicId
+                currentTab === 'history' && !selectedComicId && !selectedComicDetailId
                   ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
                   : 'text-slate-300 hover:text-white hover:bg-slate-900'
               }`}
@@ -598,10 +653,11 @@ export default function App() {
               id="nav-tab-faq"
               onClick={() => {
                 setSelectedComicId(null);
+                setSelectedComicDetailId(null);
                 setCurrentTab('faq');
               }}
               className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                currentTab === 'faq' && !selectedComicId
+                currentTab === 'faq' && !selectedComicId && !selectedComicDetailId
                   ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
                   : 'text-slate-300 hover:text-white hover:bg-slate-900'
               }`}
@@ -612,10 +668,11 @@ export default function App() {
               id="nav-tab-report"
               onClick={() => {
                 setSelectedComicId(null);
+                setSelectedComicDetailId(null);
                 setCurrentTab('report');
               }}
               className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                currentTab === 'report' && !selectedComicId
+                currentTab === 'report' && !selectedComicId && !selectedComicDetailId
                   ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
                   : 'text-slate-300 hover:text-white hover:bg-slate-900'
               }`}
@@ -685,11 +742,12 @@ export default function App() {
                 key={item.id}
                 onClick={() => {
                   setSelectedComicId(null);
+                  setSelectedComicDetailId(null);
                   setCurrentTab(item.id as NavTab);
                   setMobileMenuOpen(false);
                 }}
                 className={`w-full text-left px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
-                  currentTab === item.id && !selectedComicId
+                    currentTab === item.id && !selectedComicId && !selectedComicDetailId
                     ? 'bg-blue-600 text-white'
                     : 'text-slate-300 hover:bg-slate-900'
                 }`}
@@ -704,6 +762,174 @@ export default function App() {
       {/* 2. Main Content Area with Fade-In & Slide-Up Motion Transitions */}
       <main className="flex-1">
         <AnimatePresence mode="wait">
+          {/* VIEW DETAIL: COMIC DETAIL PAGE */}
+          {selectedComicDetailId && detailComic ? (
+            <motion.div
+              key={`detail-${detailComic.titleId}`}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              id="comic-detail-view"
+              className="min-h-screen bg-slate-950 text-slate-100"
+            >
+              <section className="relative overflow-hidden border-b border-slate-800">
+                <div className="absolute inset-0 bg-cover bg-center opacity-35" style={{ backgroundImage: `url(${detailComic.bannerImageUrl})` }} />
+                <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-slate-950/90 to-slate-950" />
+                <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedComicDetailId(null)}
+                    className="inline-flex items-center gap-2 text-xs font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
+                    aria-label="Kembali ke daftar komik"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Kembali
+                  </button>
+
+                  <div className="mt-7 grid gap-6 md:grid-cols-[180px_1fr] md:items-end">
+                    <img
+                      src={detailComic.coverImageUrl}
+                      alt={detailComic.title}
+                      className="w-32 sm:w-40 md:w-44 aspect-[3/4] object-cover rounded-2xl border border-white/15 shadow-2xl shadow-blue-950/50"
+                      onError={(event) => { event.currentTarget.src = detailComic.bannerImageUrl; }}
+                    />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-3">
+                        <span className="px-2.5 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-200 text-[11px] font-bold">
+                          {detailComic.status}
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-xs text-slate-300">
+                          <Eye className="w-3.5 h-3.5" /> {detailComic.views.toLocaleString('id-ID')} views
+                        </span>
+                      </div>
+                      <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white">{detailComic.title}</h1>
+                      <p className="mt-3 text-sm text-slate-300">{detailComic.author} <span className="text-slate-600 px-1">•</span> {detailComic.releaseYear}</p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {detailComic.genre.map((genre) => (
+                          <span key={genre} className="px-2.5 py-1 rounded-lg bg-white/10 border border-white/10 text-xs text-slate-200">
+                            {genre}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+                <section className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenReaderFromDetail(detailComic.titleId, detailHistory?.chapterNumber || 1)}
+                    className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shadow-lg shadow-blue-900/30 transition-colors cursor-pointer"
+                  >
+                    <BookOpen className="w-4 h-4" />
+                    {detailHistory ? 'Lanjutkan Membaca' : 'Mulai Membaca'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleFavorite(detailComic)}
+                    className={`inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl border text-sm font-bold transition-colors cursor-pointer ${detailFavorite ? 'border-rose-500/50 bg-rose-500/15 text-rose-300' : 'border-slate-700 bg-slate-900 text-slate-200 hover:border-rose-400/50 hover:text-rose-300'}`}
+                    aria-pressed={detailFavorite}
+                  >
+                    <Heart className={`w-4 h-4 ${detailFavorite ? 'fill-current' : ''}`} />
+                    {detailFavorite ? '♥ Favorit' : '♡ Favorit'}
+                  </button>
+                </section>
+
+                {detailHistory && (
+                  <section className="p-4 sm:p-5 rounded-2xl bg-blue-950/30 border border-blue-500/20">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-blue-300 font-black">Lanjutkan Membaca</p>
+                        <h2 className="mt-1 text-base font-bold text-white">Bab {detailHistory.chapterNumber}</h2>
+                        <p className="mt-1 text-xs text-slate-400">
+                          {detailComic.chapters.find((chapter) => chapter.chapterNumber === detailHistory.chapterNumber)?.title || 'Chapter terakhir dibaca'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="w-32">
+                          <div className="flex justify-between text-[10px] text-slate-400 mb-1"><span>Progress</span><span>{Math.round(detailHistory.progress || 0)}%</span></div>
+                          <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden"><div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min(100, Math.max(0, detailHistory.progress || 0))}%` }} /></div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenReaderFromDetail(detailComic.titleId, detailHistory.chapterNumber)}
+                          className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold text-white transition-colors cursor-pointer"
+                        >
+                          Lanjutkan
+                        </button>
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                <section className="grid gap-8 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                  <div>
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <h2 className="text-lg font-bold text-white">Tentang Komik</h2>
+                      <span className="text-xs text-slate-500">{detailComic.chapters.length} chapter</span>
+                    </div>
+                    <p className={`text-sm leading-7 text-slate-300 ${!isDescriptionExpanded ? 'line-clamp-4' : ''}`}>{detailComic.description}</p>
+                    {detailComic.description.length > 220 && (
+                      <button
+                        type="button"
+                        onClick={() => setIsDescriptionExpanded((expanded) => !expanded)}
+                        className="mt-2 text-xs font-bold text-blue-400 hover:text-blue-300 cursor-pointer"
+                      >
+                        {isDescriptionExpanded ? 'Tampilkan lebih sedikit' : 'Baca selengkapnya'}
+                      </button>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <h2 className="text-lg font-bold text-white">Daftar Chapter</h2>
+                      <span className="text-xs text-slate-500">Pilih chapter untuk membaca</span>
+                    </div>
+                    <div className="rounded-2xl border border-slate-800 bg-slate-900/70 divide-y divide-slate-800 overflow-hidden">
+                      {detailComic.chapters.length === 0 ? (
+                        <p className="p-6 text-sm text-slate-400 text-center">Belum ada chapter tersedia.</p>
+                      ) : detailComic.chapters.map((chapter) => {
+                        const isRead = detailHistory?.chapterNumber === chapter.chapterNumber;
+                        const progress = isRead ? Math.min(100, Math.max(0, detailHistory?.progress || 0)) : 0;
+                        return (
+                          <div key={chapter.id} className={`p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 ${isRead ? 'bg-blue-950/25' : ''}`}>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-black text-blue-300">Chapter {chapter.chapterNumber}</span>
+                                {isRead && <span className="inline-flex items-center gap-1 text-[10px] text-emerald-300"><BookMarked className="w-3 h-3" /> Dibaca</span>}
+                              </div>
+                              <h3 className="mt-1 text-sm font-semibold text-white truncate">{chapter.title}</h3>
+                              <p className="mt-1 text-[11px] text-slate-500 inline-flex items-center gap-1"><Calendar className="w-3 h-3" /> {chapter.releaseDate}</p>
+                              {isRead && <div className="mt-2 h-1 rounded-full bg-slate-800 overflow-hidden max-w-xs"><div className="h-full bg-blue-500" style={{ width: `${progress}%` }} /></div>}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenReaderFromDetail(detailComic.titleId, chapter.chapterNumber)}
+                              className="shrink-0 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600/15 hover:bg-blue-600 text-blue-200 hover:text-white text-xs font-bold transition-colors cursor-pointer"
+                            >
+                              <BookOpen className="w-3.5 h-3.5" /> Baca
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </section>
+
+                <SocialSection
+                  comicId={detailComic.titleId}
+                  comicTitle={detailComic.title}
+                  comicCover={detailComic.coverImageUrl}
+                  genre={detailComic.genre}
+                  onRequireLogin={() => setIsLoginModalOpen(true)}
+                />
+              </div>
+            </motion.div>
+          ) : null}
+
           {/* VIEW A: DETAIL / WEBTOON READER */}
           {selectedComicId && activeComic ? (
             <motion.div
@@ -850,7 +1076,7 @@ export default function App() {
                       src={page.imageUrl || activeComic.coverImageUrl}
                       alt={`Panel ${page.panelNumber} - ${activeComic.title}`}
                       className="block w-full h-auto max-w-full select-none"
-                      loading={index < 2 ? 'eager' : 'lazy'}
+                      loading="eager"
                       fetchPriority={index < 2 ? 'high' : 'auto'}
                       decoding="async"
                       draggable={false}
@@ -916,7 +1142,7 @@ export default function App() {
           ) : null}
 
         {/* VIEW B: BERANDA (HOME PAGE) */}
-        {!selectedComicId && currentTab === 'home' && (
+        {!selectedComicId && !selectedComicDetailId && currentTab === 'home' && (
           <motion.div
             key="tab-home"
             initial={{ opacity: 0, y: 16 }}
@@ -1080,7 +1306,7 @@ export default function App() {
                   <div
                     key={comic.titleId}
                     id={`home-card-${comic.titleId}`}
-                    onClick={() => handleOpenReader(comic.titleId)}
+                    onClick={() => handleOpenComicDetail(comic.titleId)}
                     className="group bg-slate-900 border border-slate-800/90 rounded-2xl overflow-hidden hover:border-blue-500/60 transition-all duration-200 cursor-pointer flex flex-col shadow-lg"
                   >
                     <div className="relative aspect-[3/4] overflow-hidden bg-slate-950">
@@ -1133,7 +1359,7 @@ export default function App() {
         )}
 
         {/* VIEW C: DAFTAR KOMIK (COMIC LIST PAGE & SEARCH / FILTER) */}
-        {!selectedComicId && currentTab === 'comics' && (
+        {!selectedComicId && !selectedComicDetailId && currentTab === 'comics' && (
           <motion.div
             key="tab-comics"
             initial={{ opacity: 0, y: 16 }}
@@ -1247,7 +1473,7 @@ export default function App() {
                   <div
                     key={comic.titleId}
                     id={`comic-card-${comic.titleId}`}
-                    onClick={() => handleOpenReader(comic.titleId)}
+                    onClick={() => handleOpenComicDetail(comic.titleId)}
                     className="group bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-blue-500/60 transition-all duration-200 cursor-pointer flex flex-col shadow-xl"
                   >
                     <div className="relative aspect-[3/4] overflow-hidden bg-slate-950">
@@ -1300,7 +1526,7 @@ export default function App() {
         )}
 
         {/* VIEW D: FAVORIT SAYA (FAVORITES PAGE) */}
-        {!selectedComicId && currentTab === 'favorites' && (
+        {!selectedComicId && !selectedComicDetailId && currentTab === 'favorites' && (
           <motion.div
             key="tab-favorites"
             initial={{ opacity: 0, y: 16 }}
@@ -1382,7 +1608,7 @@ export default function App() {
         )}
 
         {/* VIEW E: RIWAYAT BACA (READING HISTORY PAGE) */}
-        {!selectedComicId && currentTab === 'history' && (
+        {!selectedComicId && !selectedComicDetailId && currentTab === 'history' && (
           <motion.div
             key="tab-history"
             initial={{ opacity: 0, y: 16 }}
@@ -1488,7 +1714,7 @@ export default function App() {
         )}
 
         {/* VIEW F: TANYA JAWAB (FAQ PAGE) */}
-        {!selectedComicId && currentTab === 'faq' && (
+        {!selectedComicId && !selectedComicDetailId && currentTab === 'faq' && (
           <motion.div
             key="tab-faq"
             initial={{ opacity: 0, y: 16 }}
@@ -1531,7 +1757,7 @@ export default function App() {
         )}
 
         {/* VIEW G: LAPOR BUG / SARAN (REPORT FORM PAGE) */}
-        {!selectedComicId && currentTab === 'report' && (
+        {!selectedComicId && !selectedComicDetailId && currentTab === 'report' && (
           <motion.div
             key="tab-report"
             initial={{ opacity: 0, y: 16 }}
@@ -1563,6 +1789,7 @@ export default function App() {
             <button
               onClick={() => {
                 setSelectedComicId(null);
+                setSelectedComicDetailId(null);
                 setCurrentTab('faq');
               }}
               className="hover:text-white transition-colors cursor-pointer"
@@ -1573,6 +1800,7 @@ export default function App() {
             <button
               onClick={() => {
                 setSelectedComicId(null);
+                setSelectedComicDetailId(null);
                 setCurrentTab('report');
               }}
               className="hover:text-white transition-colors cursor-pointer"
