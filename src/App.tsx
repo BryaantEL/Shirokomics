@@ -24,7 +24,7 @@ import {
 import { LoginModal } from './LoginModal';
 import { SocialSection } from './SocialSection';
 import { BugReportForm } from './BugReportForm';
-import { isCbzProcessingAvailable } from './cbzService';
+import { uploadCbzFromBrowser } from './cbzBrowserService';
 import {
   BookOpen,
   Search,
@@ -197,6 +197,9 @@ export default function App() {
     title: '',
     releaseDate: new Date().toISOString().slice(0, 10),
   });
+  const [adminCbzFile, setAdminCbzFile] = useState<File | null>(null);
+  const [adminCbzUploading, setAdminCbzUploading] = useState(false);
+  const [adminChapterMessage, setAdminChapterMessage] = useState<string | null>(null);
   const [adminChapterEditDraft, setAdminChapterEditDraft] = useState<AdminChapterEditDraft>({
     title: '',
     releaseDate: '',
@@ -922,6 +925,42 @@ export default function App() {
       title: '',
       releaseDate: new Date().toISOString().slice(0, 10),
     });
+  };
+
+  const handleAdminCbzUpload = async () => {
+    if (!isAdmin || !selectedAdminComic || !adminCbzFile) return;
+    const chapterNumber = Number(adminChapterDraft.chapterNumber);
+    const title = adminChapterDraft.title.trim();
+    const releaseDate = adminChapterDraft.releaseDate;
+    if (!title || !Number.isInteger(chapterNumber) || chapterNumber < 1 || Number.isNaN(Date.parse(releaseDate))) {
+      setAdminChapterMessage('Isi chapter number, judul, dan tanggal yang valid terlebih dahulu.');
+      return;
+    }
+    if (selectedAdminComic.chapters.some((chapter) => chapter.chapterNumber === chapterNumber)) {
+      setAdminChapterMessage('Nomor chapter tersebut sudah digunakan.');
+      return;
+    }
+    setAdminCbzUploading(true);
+    setAdminChapterMessage(null);
+    try {
+      const uploaded = await uploadCbzFromBrowser(adminCbzFile, selectedAdminComic.titleId, chapterNumber);
+      const chapter: ComicChapter = {
+        id: `${selectedAdminComic.titleId}-chapter-${String(chapterNumber).padStart(2, '0')}`,
+        chapterNumber,
+        title,
+        releaseDate,
+        ...uploaded,
+      };
+      persistAdminComic({ ...selectedAdminComic, chapters: [...selectedAdminComic.chapters, chapter] });
+      addAdminActivity('chapter_created', `Chapter ${chapterNumber} dari CBZ ditambahkan ke ${selectedAdminComic.title}.`);
+      setAdminCbzFile(null);
+      setAdminChapterDraft({ chapterNumber: '', title: '', releaseDate: new Date().toISOString().slice(0, 10) });
+      setAdminChapterMessage(`Berhasil upload ${uploaded.pageCount} halaman.`);
+    } catch (error) {
+      setAdminChapterMessage(error instanceof Error ? error.message : 'Upload CBZ gagal.');
+    } finally {
+      setAdminCbzUploading(false);
+    }
   };
 
   const persistAdminComic = (comic: Comic) => {
@@ -1739,11 +1778,15 @@ export default function App() {
                               <input value={adminChapterDraft.title} onChange={(event) => setAdminChapterDraft((prev) => ({ ...prev, title: event.target.value }))} placeholder="Judul Chapter" className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
                               <input type="date" value={adminChapterDraft.releaseDate} onChange={(event) => setAdminChapterDraft((prev) => ({ ...prev, releaseDate: event.target.value }))} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
                               <div className="rounded-2xl border border-dashed border-blue-500/30 bg-blue-500/5 p-3 text-xs text-slate-300">
-                                <p className="font-bold text-blue-300">CBZ Upload — {isCbzProcessingAvailable ? 'Ready' : 'Coming Soon'}</p>
-                                <p className="mt-1">{isCbzProcessingAvailable ? 'CBZ dapat diproses oleh backend.' : 'CBZ upload belum dikonfigurasi karena server-side archive processing dan Firebase Storage belum tersedia.'}</p>
+                                <p className="font-bold text-blue-300">CBZ Upload — Supabase Storage</p>
+                                <p className="mt-1">Upload CBZ akan diekstrak di browser, diurutkan natural, lalu gambar disimpan ke Supabase Storage.</p>
                                 <p className="mt-2">Metadata kompatibel: <span className="font-semibold text-white">sourceType</span>, <span className="font-semibold text-white">pageCount</span>, <span className="font-semibold text-white">storagePath</span>, <span className="font-semibold text-white">archiveName</span>.</p>
+                                <input type="file" accept=".cbz,application/zip" onChange={(event) => setAdminCbzFile(event.target.files?.[0] || null)} className="mt-3 block w-full text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600 file:px-3 file:py-2 file:text-xs file:font-bold file:text-white" />
+                                {adminCbzFile && <p className="mt-2 text-blue-200">File: {adminCbzFile.name}</p>}
                               </div>
                               <button type="button" onClick={handleAdminAddChapter} className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white cursor-pointer">Simpan Chapter</button>
+                              <button type="button" disabled={!adminCbzFile || adminCbzUploading} onClick={handleAdminCbzUpload} className="w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">{adminCbzUploading ? 'Mengunggah CBZ...' : 'Upload CBZ dan Buat Chapter'}</button>
+                              {adminChapterMessage && <p className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200">{adminChapterMessage}</p>}
                             </div>
                           </div>
                         </div>
