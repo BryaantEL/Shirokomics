@@ -24,6 +24,7 @@ import {
 import { LoginModal } from './LoginModal';
 import { SocialSection } from './SocialSection';
 import { BugReportForm } from './BugReportForm';
+import { isCbzProcessingAvailable } from './cbzService';
 import {
   BookOpen,
   Search,
@@ -93,6 +94,11 @@ type AdminComicDraft = {
 
 type AdminChapterDraft = {
   chapterNumber: string;
+  title: string;
+  releaseDate: string;
+};
+
+type AdminChapterEditDraft = {
   title: string;
   releaseDate: string;
 };
@@ -191,6 +197,16 @@ export default function App() {
     title: '',
     releaseDate: new Date().toISOString().slice(0, 10),
   });
+  const [adminChapterEditDraft, setAdminChapterEditDraft] = useState<AdminChapterEditDraft>({
+    title: '',
+    releaseDate: '',
+  });
+  const [adminEditingChapterId, setAdminEditingChapterId] = useState<string | null>(null);
+  const [adminDeleteChapterTarget, setAdminDeleteChapterTarget] = useState<{
+    comicId: string;
+    chapter: ComicChapter;
+  } | null>(null);
+  const [adminSelectedChapterId, setAdminSelectedChapterId] = useState<string | null>(null);
   const [adminDeleteTarget, setAdminDeleteTarget] = useState<Comic | null>(null);
 
   useEffect(() => {
@@ -869,10 +885,10 @@ export default function App() {
   };
 
   const handleAdminAddChapter = () => {
-    if (!selectedAdminComic) return;
+    if (!isAdmin || !selectedAdminComic) return;
     const chapterNumber = Number(adminChapterDraft.chapterNumber);
     const trimmedTitle = adminChapterDraft.title.trim();
-    if (!trimmedTitle || !Number.isFinite(chapterNumber) || chapterNumber <= 0) return;
+    if (!trimmedTitle || !Number.isFinite(chapterNumber) || chapterNumber <= 0 || !adminChapterDraft.releaseDate || Number.isNaN(Date.parse(adminChapterDraft.releaseDate))) return;
 
     const exists = selectedAdminComic.chapters.some((chapter) => chapter.chapterNumber === chapterNumber);
     if (exists) return;
@@ -905,6 +921,81 @@ export default function App() {
       chapterNumber: '',
       title: '',
       releaseDate: new Date().toISOString().slice(0, 10),
+    });
+  };
+
+  const persistAdminComic = (comic: Comic) => {
+    if (!isAdmin) return;
+    setAdminComics((prev) => prev.map((item) => item.titleId === comic.titleId ? comic : item));
+    void setDoc(doc(db, 'comics', comic.titleId), comic)
+      .catch((error) => console.error('Chapter update failed:', error));
+  };
+
+  const handleAdminEditChapter = (comic: Comic, chapter: ComicChapter) => {
+    if (!isAdmin) return;
+    setAdminSelectedComicId(comic.titleId);
+    setAdminEditingChapterId(chapter.id);
+    setAdminChapterEditDraft({ title: chapter.title, releaseDate: chapter.releaseDate });
+  };
+
+  const handleAdminSaveChapterEdit = () => {
+    if (!selectedAdminComic || !adminEditingChapterId) return;
+    const title = adminChapterEditDraft.title.trim();
+    const releaseDate = adminChapterEditDraft.releaseDate.trim();
+    if (!title || !releaseDate || Number.isNaN(Date.parse(releaseDate))) return;
+    const updatedComic: Comic = {
+      ...selectedAdminComic,
+      chapters: selectedAdminComic.chapters.map((chapter) => chapter.id === adminEditingChapterId
+        ? { ...chapter, title, releaseDate }
+        : chapter),
+    };
+    persistAdminComic(updatedComic);
+    addAdminActivity('chapter_updated', `Chapter ${updatedComic.chapters.find((chapter) => chapter.id === adminEditingChapterId)?.chapterNumber || ''} diperbarui.`);
+    setAdminEditingChapterId(null);
+  };
+
+  const confirmAdminDeleteChapter = () => {
+    if (!isAdmin || !adminDeleteChapterTarget) return;
+    const comic = adminComics.find((item) => item.titleId === adminDeleteChapterTarget.comicId);
+    if (!comic) return;
+    const updatedComic: Comic = {
+      ...comic,
+      chapters: comic.chapters.filter((chapter) => chapter.id !== adminDeleteChapterTarget.chapter.id),
+    };
+    persistAdminComic(updatedComic);
+    addAdminActivity('chapter_deleted', `Chapter ${adminDeleteChapterTarget.chapter.chapterNumber} dihapus dari ${comic.title}.`);
+    setAdminDeleteChapterTarget(null);
+  };
+
+  const handleAdminDeletePage = (comic: Comic, chapter: ComicChapter, panelNumber: number) => {
+    if (!isAdmin) return;
+    const updatedChapter: ComicChapter = {
+      ...chapter,
+      pages: chapter.pages
+        .filter((page) => page.panelNumber !== panelNumber)
+        .map((page, index) => ({ ...page, panelNumber: index + 1 })),
+      pageCount: Math.max(0, chapter.pages.length - 1),
+    };
+    persistAdminComic({
+      ...comic,
+      chapters: comic.chapters.map((item) => item.id === chapter.id ? updatedChapter : item),
+    });
+  };
+
+  const handleAdminMovePage = (comic: Comic, chapter: ComicChapter, panelNumber: number, direction: -1 | 1) => {
+    const currentIndex = chapter.pages.findIndex((page) => page.panelNumber === panelNumber);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= chapter.pages.length) return;
+    const pages = [...chapter.pages];
+    [pages[currentIndex], pages[nextIndex]] = [pages[nextIndex], pages[currentIndex]];
+    const updatedChapter: ComicChapter = {
+      ...chapter,
+      pages: pages.map((page, index) => ({ ...page, panelNumber: index + 1 })),
+      pageCount: pages.length,
+    };
+    persistAdminComic({
+      ...comic,
+      chapters: comic.chapters.map((item) => item.id === chapter.id ? updatedChapter : item),
     });
   };
 
@@ -1553,7 +1644,7 @@ export default function App() {
                                         </div>
                                         <div className="mt-3 flex flex-wrap gap-2">
                                           <button type="button" onClick={() => handleAdminEditComic(comic)} className="rounded-lg bg-white/5 px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 hover:bg-white/10 cursor-pointer"><Pencil className="w-3 h-3 inline mr-1" />Edit</button>
-                                          <button type="button" onClick={() => setAdminSelectedComicId(comic.titleId)} className="rounded-lg bg-blue-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-blue-300 hover:bg-blue-500/20 cursor-pointer">Manage Chapters</button>
+                                          <button type="button" onClick={() => { setAdminSelectedComicId(comic.titleId); setAdminSection('chapters'); }} className="rounded-lg bg-blue-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-blue-300 hover:bg-blue-500/20 cursor-pointer">Manage Chapters</button>
                                           <button type="button" onClick={() => handleAdminDeleteComic(comic)} className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-rose-300 hover:bg-rose-500/20 cursor-pointer"><Trash2 className="w-3 h-3 inline mr-1" />Delete</button>
                                         </div>
                                       </div>
@@ -1627,16 +1718,17 @@ export default function App() {
                                     </div>
                                     <div className="flex flex-wrap gap-2 text-[11px]">
                                       <span className="rounded-full bg-white/5 px-2 py-1 text-slate-300">{chapter.pageCount ?? chapter.pages.length} halaman</span>
-                                      <span className="rounded-full bg-violet-500/10 px-2 py-1 text-violet-300">{chapter.sourceType ?? 'images'}</span>
+                                      <span className="rounded-full bg-violet-500/10 px-2 py-1 text-violet-300">{chapter.pages.length > 0 ? 'Ready' : 'Empty'}</span>
                                     </div>
                                   </div>
                                   <div className="mt-3 flex flex-wrap gap-2">
-                                    <button type="button" className="rounded-lg bg-white/5 px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 cursor-pointer">Edit</button>
-                                    <button type="button" className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-rose-300 cursor-pointer">Delete</button>
-                                    <button type="button" className="rounded-lg bg-blue-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-blue-300 cursor-pointer">Manage Pages</button>
+                                    <button type="button" onClick={() => handleAdminEditChapter(selectedAdminComic, chapter)} className="rounded-lg bg-white/5 px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 cursor-pointer"><Pencil className="w-3 h-3 inline mr-1" />Edit</button>
+                                    <button type="button" onClick={() => setAdminDeleteChapterTarget({ comicId: selectedAdminComic.titleId, chapter })} className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-rose-300 cursor-pointer"><Trash2 className="w-3 h-3 inline mr-1" />Delete</button>
+                                    <button type="button" onClick={() => setAdminSelectedChapterId(chapter.id)} className="rounded-lg bg-blue-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-blue-300 cursor-pointer"><Layers3 className="w-3 h-3 inline mr-1" />Manage Pages</button>
                                   </div>
                                 </div>
                               ))}
+                              {selectedAdminComic.chapters.length === 0 && <div className="rounded-2xl border border-dashed border-slate-700 p-8 text-center text-sm text-slate-400">Belum ada chapter untuk komik ini.</div>}
                             </div>
                           </div>
 
@@ -1647,13 +1739,52 @@ export default function App() {
                               <input value={adminChapterDraft.title} onChange={(event) => setAdminChapterDraft((prev) => ({ ...prev, title: event.target.value }))} placeholder="Judul Chapter" className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
                               <input type="date" value={adminChapterDraft.releaseDate} onChange={(event) => setAdminChapterDraft((prev) => ({ ...prev, releaseDate: event.target.value }))} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
                               <div className="rounded-2xl border border-dashed border-blue-500/30 bg-blue-500/5 p-3 text-xs text-slate-300">
-                                <p className="font-bold text-blue-300">CBZ Upload — Coming Soon</p>
-                                <p className="mt-1">Arsitektur chapter sudah disiapkan dengan fields <span className="font-semibold text-white">sourceType</span>, <span className="font-semibold text-white">pageCount</span>, dan <span className="font-semibold text-white">storagePath</span> untuk kompatibilitas masa depan.</p>
+                                <p className="font-bold text-blue-300">CBZ Upload — {isCbzProcessingAvailable ? 'Ready' : 'Coming Soon'}</p>
+                                <p className="mt-1">{isCbzProcessingAvailable ? 'CBZ dapat diproses oleh backend.' : 'CBZ upload belum dikonfigurasi karena server-side archive processing dan Firebase Storage belum tersedia.'}</p>
+                                <p className="mt-2">Metadata kompatibel: <span className="font-semibold text-white">sourceType</span>, <span className="font-semibold text-white">pageCount</span>, <span className="font-semibold text-white">storagePath</span>, <span className="font-semibold text-white">archiveName</span>.</p>
                               </div>
                               <button type="button" onClick={handleAdminAddChapter} className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white cursor-pointer">Simpan Chapter</button>
                             </div>
                           </div>
                         </div>
+
+                        {adminSelectedChapterId && selectedAdminComic.chapters.some((chapter) => chapter.id === adminSelectedChapterId) && (
+                          <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+                            {(() => {
+                              const selectedChapter = selectedAdminComic.chapters.find((chapter) => chapter.id === adminSelectedChapterId)!;
+                              return (
+                                <>
+                                  <div className="flex items-center justify-between gap-3 mb-4">
+                                    <div>
+                                      <p className="text-[11px] uppercase tracking-[0.15em] text-blue-300 font-black">Manage Pages</p>
+                                      <h2 className="text-lg font-bold text-white">Chapter {selectedChapter.chapterNumber} · {selectedChapter.title}</h2>
+                                    </div>
+                                    <button type="button" onClick={() => setAdminSelectedChapterId(null)} className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 cursor-pointer">Tutup</button>
+                                  </div>
+                                  {selectedChapter.pages.length === 0 ? (
+                                    <div className="rounded-2xl border border-dashed border-slate-700 p-8 text-center text-sm text-slate-400">Belum ada halaman. Upload CBZ belum tersedia.</div>
+                                  ) : (
+                                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+                                      {selectedChapter.pages.map((page) => (
+                                        <div key={page.panelNumber} className="rounded-xl border border-slate-800 bg-slate-950/70 p-2">
+                                          <img src={page.imageUrl || selectedAdminComic.coverImageUrl} alt={`Page ${page.panelNumber}`} className="aspect-[3/4] w-full rounded-lg object-cover" />
+                                          <div className="mt-2 flex items-center justify-between gap-2">
+                                            <span className="text-[11px] font-semibold text-slate-300">Page {page.panelNumber}</span>
+                                            <div className="flex gap-1">
+                                              <button type="button" disabled={page.panelNumber === 1} onClick={() => handleAdminMovePage(selectedAdminComic, selectedChapter, page.panelNumber, -1)} className="text-[10px] font-bold text-blue-300 disabled:opacity-30 cursor-pointer" aria-label={`Geser page ${page.panelNumber} ke atas`}>↑</button>
+                                              <button type="button" disabled={page.panelNumber === selectedChapter.pages.length} onClick={() => handleAdminMovePage(selectedAdminComic, selectedChapter, page.panelNumber, 1)} className="text-[10px] font-bold text-blue-300 disabled:opacity-30 cursor-pointer" aria-label={`Geser page ${page.panelNumber} ke bawah`}>↓</button>
+                                              <button type="button" onClick={() => handleAdminDeletePage(selectedAdminComic, selectedChapter, page.panelNumber)} className="text-[10px] font-bold text-rose-300 cursor-pointer">Hapus</button>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -1717,6 +1848,38 @@ export default function App() {
                     <div className="mt-6 flex justify-end gap-3">
                       <button type="button" onClick={() => setAdminDeleteTarget(null)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800 cursor-pointer">Batal</button>
                       <button type="button" onClick={confirmAdminDeleteComic} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-bold text-white hover:bg-rose-500 cursor-pointer">Hapus</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {adminEditingChapterId && selectedAdminComic && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+                  <div className="w-full max-w-md rounded-3xl border border-blue-500/30 bg-slate-900 p-6 shadow-2xl">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-blue-300 font-black">Edit Chapter</p>
+                    <h3 className="mt-3 text-2xl font-black text-white">Perbarui metadata chapter</h3>
+                    <div className="mt-5 grid gap-3">
+                      <input value={adminChapterEditDraft.title} onChange={(event) => setAdminChapterEditDraft((prev) => ({ ...prev, title: event.target.value }))} placeholder="Judul Chapter" className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white" />
+                      <input type="date" value={adminChapterEditDraft.releaseDate} onChange={(event) => setAdminChapterEditDraft((prev) => ({ ...prev, releaseDate: event.target.value }))} className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white" />
+                    </div>
+                    <div className="mt-6 flex justify-end gap-3">
+                      <button type="button" onClick={() => setAdminEditingChapterId(null)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 cursor-pointer">Batal</button>
+                      <button type="button" onClick={handleAdminSaveChapterEdit} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white cursor-pointer">Simpan</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {adminDeleteChapterTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+                  <div className="w-full max-w-md rounded-3xl border border-rose-500/30 bg-slate-900 p-6 shadow-2xl">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-rose-300 font-black">Konfirmasi Hapus</p>
+                    <h3 className="mt-3 text-2xl font-black text-white">Hapus Chapter {adminDeleteChapterTarget.chapter.chapterNumber}?</h3>
+                    <p className="mt-4 text-sm text-slate-300">Jumlah halaman: {adminDeleteChapterTarget.chapter.pageCount ?? adminDeleteChapterTarget.chapter.pages.length} halaman</p>
+                    <p className="mt-3 text-sm text-slate-400">Tindakan ini tidak dapat dibatalkan.</p>
+                    <div className="mt-6 flex justify-end gap-3">
+                      <button type="button" onClick={() => setAdminDeleteChapterTarget(null)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 cursor-pointer">Batal</button>
+                      <button type="button" onClick={confirmAdminDeleteChapter} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-bold text-white cursor-pointer">Hapus</button>
                     </div>
                   </div>
                 </div>
