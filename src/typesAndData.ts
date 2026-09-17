@@ -3,6 +3,10 @@ export interface ComicChapter {
   chapterNumber: number;
   title: string;
   releaseDate: string;
+  sourceType?: 'images' | 'cbz';
+  pageCount?: number;
+  storagePath?: string;
+  archiveName?: string;
   pages: {
     panelNumber: number;
     dialogue: string;
@@ -35,6 +39,7 @@ export interface UserProfile {
   displayName: string;
   avatarUrl: string;
   createdAt: number;
+  role?: 'user' | 'admin';
 }
 
 export interface CommentItem {

@@ -6,12 +6,14 @@ import {
   ComicChapter, 
   FAQ_LIST, 
   HistoryItem, 
-  FavoriteItem 
+  FavoriteItem,
+  UserProfile
 } from './typesAndData';
 import { useAuth } from './AuthContext';
 import { db } from './firebase';
 import { 
   collection, 
+  addDoc,
   query, 
   where, 
   onSnapshot, 
@@ -49,11 +51,51 @@ import {
   Moon,
   Sun,
   ScrollText,
-  MessageSquare
+  MessageSquare,
+  ShieldCheck,
+  LayoutDashboard,
+  NotebookText,
+  Users,
+  BarChart3,
+  Settings,
+  Plus,
+  Pencil,
+  FileText,
+  Layers3,
+  FileArchive,
+  CircleDashed
 } from 'lucide-react';
 
-type NavTab = 'home' | 'comics' | 'history' | 'favorites' | 'faq' | 'report';
+type NavTab = 'home' | 'comics' | 'history' | 'favorites' | 'faq' | 'report' | 'admin';
 type ComicSort = 'newest' | 'oldest' | 'popular' | 'az' | 'za';
+type AdminSection = 'dashboard' | 'comics' | 'chapters' | 'users' | 'reports' | 'settings';
+
+type AdminActivityType = 'comic_created' | 'comic_updated' | 'comic_deleted' | 'chapter_created' | 'chapter_updated' | 'chapter_deleted';
+
+type AdminActivity = {
+  id: string;
+  type: AdminActivityType;
+  message: string;
+  timestamp: number;
+};
+
+type AdminComicDraft = {
+  title: string;
+  author: string;
+  genre: string;
+  description: string;
+  coverImageUrl: string;
+  bannerImageUrl: string;
+  releaseYear: string;
+  status: Comic['status'];
+  category: Comic['category'];
+};
+
+type AdminChapterDraft = {
+  chapterNumber: string;
+  title: string;
+  releaseDate: string;
+};
 
 interface ResumeState {
   scrollY: number;
@@ -90,9 +132,12 @@ export default function App() {
   const { currentUser, isLoggedIn, logout } = useAuth();
 
   // Navigation & Routing State
-  const [currentTab, setCurrentTab] = useState<NavTab>('home');
+  const [currentTab, setCurrentTab] = useState<NavTab>(() => (
+    window.location.pathname === '/admin' ? 'admin' : 'home'
+  ));
   const [selectedComicId, setSelectedComicId] = useState<string | null>(null);
   const [selectedComicDetailId, setSelectedComicDetailId] = useState<string | null>(null);
+  const [adminSection, setAdminSection] = useState<AdminSection>('dashboard');
   const [selectedChapterNumber, setSelectedChapterNumber] = useState<number>(1);
   const [readerTheme, setReaderTheme] = useState<'dark' | 'light'>('dark');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
@@ -101,6 +146,8 @@ export default function App() {
   const [readerControlsVisible, setReaderControlsVisible] = useState<boolean>(true);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState<boolean>(false);
   const continueResumeOverrideRef = useRef<ResumeState | null>(null);
+
+  const isAdmin = currentUser?.role === 'admin';
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -111,6 +158,114 @@ export default function App() {
   // Firestore reading history & favorites for current user
   const [readingHistory, setReadingHistory] = useState<HistoryItem[]>([]);
   const [userFavorites, setUserFavorites] = useState<FavoriteItem[]>([]);
+  const [adminComics, setAdminComics] = useState<Comic[]>(MOCK_COMICS);
+  const [adminUsers, setAdminUsers] = useState<UserProfile[]>([
+    {
+      userId: 'admin',
+      username: 'admin',
+      displayName: 'Administrator',
+      avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=admin',
+      createdAt: Date.now(),
+      role: 'admin',
+    },
+  ]);
+  const [adminActivity, setAdminActivity] = useState<AdminActivity[]>([]);
+  const [adminComicSearch, setAdminComicSearch] = useState('');
+  const [adminComicSort, setAdminComicSort] = useState<'newest' | 'oldest' | 'az' | 'za'>('newest');
+  const [adminComicStatus, setAdminComicStatus] = useState<'Semua' | Comic['status']>('Semua');
+  const [adminSelectedComicId, setAdminSelectedComicId] = useState<string>(adminComics[0]?.titleId || '');
+  const [adminComicDraft, setAdminComicDraft] = useState<AdminComicDraft>({
+    title: '',
+    author: '',
+    genre: '',
+    description: '',
+    coverImageUrl: '',
+    bannerImageUrl: '',
+    releaseYear: '2026',
+    status: 'Sedang Rilis',
+    category: 'newest',
+  });
+  const [adminEditingComicId, setAdminEditingComicId] = useState<string | null>(null);
+  const [adminChapterDraft, setAdminChapterDraft] = useState<AdminChapterDraft>({
+    chapterNumber: '',
+    title: '',
+    releaseDate: new Date().toISOString().slice(0, 10),
+  });
+  const [adminDeleteTarget, setAdminDeleteTarget] = useState<Comic | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, 'comics'),
+      (snapshot) => {
+        const remoteComics = snapshot.docs.map((item) => item.data() as Comic);
+        if (remoteComics.length === 0) {
+          setAdminComics(MOCK_COMICS);
+          return;
+        }
+        const remoteById = new Map(remoteComics.map((comic) => [comic.titleId, comic]));
+        setAdminComics([
+          ...MOCK_COMICS.filter((comic) => !remoteById.has(comic.titleId)),
+          ...remoteComics,
+        ]);
+      },
+      (error) => {
+        console.warn('Comic catalog sync unavailable; using local catalog fallback:', error.message);
+        setAdminComics(MOCK_COMICS);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (currentUser && currentUser.role === 'admin') {
+      setAdminUsers((prev) => {
+        const existing = prev.some((user) => user.userId === currentUser.userId);
+        if (existing) return prev;
+        return [
+          {
+            userId: currentUser.userId,
+            username: currentUser.username,
+            displayName: currentUser.displayName,
+            avatarUrl: currentUser.avatarUrl,
+            createdAt: currentUser.createdAt,
+            role: 'admin',
+          },
+          ...prev,
+        ];
+      });
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const unsubscribe = onSnapshot(
+      collection(db, 'users'),
+      (snapshot) => {
+        const users = snapshot.docs
+          .map((item) => item.data() as UserProfile)
+          .filter((user) => user.userId && user.username);
+        setAdminUsers(users);
+      },
+      (error) => console.warn('User management sync unavailable:', error.message)
+    );
+    return () => unsubscribe();
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const unsubscribe = onSnapshot(
+      collection(db, 'admin_activity'),
+      (snapshot) => {
+        const activities = snapshot.docs
+          .map((item) => ({ id: item.id, ...(item.data() as Omit<AdminActivity, 'id'>) }))
+          .sort((a, b) => b.timestamp - a.timestamp)
+          .slice(0, 6);
+        setAdminActivity(activities);
+      },
+      (error) => console.warn('Admin activity sync unavailable:', error.message)
+    );
+    return () => unsubscribe();
+  }, [isAdmin]);
 
   // Local fallback untuk fitur Continue Reading tanpa login.
   const [localContinueReading, setLocalContinueReading] = useState<HistoryItem | null>(() => {
@@ -129,11 +284,13 @@ export default function App() {
     }
   });
 
+  const catalogComics = adminComics.length > 0 ? adminComics : MOCK_COMICS;
+
   // Collect unique genres
-  const allGenres = ['Semua', ...Array.from(new Set(MOCK_COMICS.flatMap((c) => c.genre)))];
+  const allGenres = ['Semua', ...Array.from(new Set(catalogComics.flatMap((c) => c.genre)))];
 
   // Currently selected comic object
-  const activeComic = MOCK_COMICS.find((c) => c.titleId === selectedComicId) || null;
+  const activeComic = catalogComics.find((c) => c.titleId === selectedComicId) || null;
   const activeChapter = activeComic?.chapters.find((ch) => ch.chapterNumber === selectedChapterNumber) || activeComic?.chapters[0];
 
   // Listen to reading history in Firestore when user is logged in
@@ -190,7 +347,7 @@ export default function App() {
     let hasRestored = false;
 
     const storageKey = `shiroko-reader:${selectedComicId}:${selectedChapterNumber}`;
-    const activeComicForResume = MOCK_COMICS.find((comic) => comic.titleId === selectedComicId);
+    const activeComicForResume = catalogComics.find((comic) => comic.titleId === selectedComicId);
     const cloudHistory = readingHistory.find(
       (item) => item.comicId === selectedComicId && item.chapterNumber === selectedChapterNumber
     );
@@ -357,7 +514,7 @@ export default function App() {
     chapterNum: number = 1,
     resumeOverride?: ResumeState
   ) => {
-    const comic = MOCK_COMICS.find((c) => c.titleId === comicId);
+    const comic = catalogComics.find((c) => c.titleId === comicId);
     if (!comic) return;
 
     const existingHistory = readingHistory.find(
@@ -420,7 +577,7 @@ export default function App() {
   };
 
   const handleOpenComicDetail = (comicId: string) => {
-    if (!MOCK_COMICS.some((comic) => comic.titleId === comicId)) return;
+    if (!catalogComics.some((comic) => comic.titleId === comicId)) return;
     setSelectedComicId(null);
     setSelectedComicDetailId(comicId);
     window.scrollTo({ top: 0, behavior: 'auto' });
@@ -481,7 +638,7 @@ export default function App() {
   const continueItem = latestHistory || localContinueReading;
 
   const continueComic = continueItem
-    ? MOCK_COMICS.find(
+    ? catalogComics.find(
         (comic) => comic.titleId === continueItem.comicId
       )
     : null;
@@ -496,7 +653,7 @@ export default function App() {
     Math.max(0, continueItem?.progress || 0)
   );
 
-  const detailComic = MOCK_COMICS.find((comic) => comic.titleId === selectedComicDetailId) || null;
+  const detailComic = catalogComics.find((comic) => comic.titleId === selectedComicDetailId) || null;
   const detailHistory = detailComic
     ? readingHistory.find((item) => item.comicId === detailComic.titleId) ||
       (localContinueReading?.comicId === detailComic.titleId ? localContinueReading : null)
@@ -508,7 +665,7 @@ export default function App() {
   const normalizedSearchQuery = searchQuery.trim().replace(/\s+/g, ' ').toLowerCase();
 
   const filteredComics = useMemo(() => {
-    const result = MOCK_COMICS.filter((comic) => {
+    const result = catalogComics.filter((comic) => {
       const searchableText = [comic.title, comic.author, ...comic.genre]
         .join(' ')
         .toLowerCase();
@@ -541,6 +698,222 @@ export default function App() {
     setSelectedStatus('Semua');
     setSelectedSort('newest');
   };
+
+  const adminList = useMemo(() => {
+    const query = adminComicSearch.trim().toLowerCase();
+    const next = adminComics.filter((comic) => {
+      const matchesSearch = !query || [comic.title, comic.author, comic.genre.join(' '), comic.description].join(' ').toLowerCase().includes(query);
+      const matchesStatus = adminComicStatus === 'Semua' || comic.status === adminComicStatus;
+      return matchesSearch && matchesStatus;
+    });
+
+    return [...next].sort((a, b) => {
+      switch (adminComicSort) {
+        case 'oldest':
+          return a.releaseYear - b.releaseYear;
+        case 'popular':
+          return b.views - a.views;
+        case 'az':
+          return a.title.localeCompare(b.title, 'id');
+        case 'za':
+          return b.title.localeCompare(a.title, 'id');
+        case 'newest':
+        default:
+          return b.releaseYear - a.releaseYear;
+      }
+    });
+  }, [adminComicSearch, adminComicSort, adminComicStatus, adminComics]);
+
+  const selectedAdminComic = adminComics.find((comic) => comic.titleId === adminSelectedComicId) || adminComics[0] || null;
+
+  const addAdminActivity = (type: AdminActivityType, message: string) => {
+    const timestamp = Date.now();
+    setAdminActivity((prev) => [{
+      id: `${type}-${timestamp}-${Math.random().toString(16).slice(2)}`,
+      type,
+      message,
+      timestamp,
+    }, ...prev].slice(0, 6));
+    if (isAdmin) {
+      void addDoc(collection(db, 'admin_activity'), {
+        type,
+        message,
+        timestamp,
+        userId: currentUser?.userId,
+      }).catch((error) => console.error('Admin activity log failed:', error));
+    }
+  };
+
+  const handleAdminSubmitComic = () => {
+    const title = adminComicDraft.title.trim();
+    const author = adminComicDraft.author.trim();
+    const description = adminComicDraft.description.trim();
+    const genreList = adminComicDraft.genre.split(',').map((item) => item.trim()).filter(Boolean);
+    const numericYear = Number(adminComicDraft.releaseYear);
+
+    if (!title || !author || !description || !genreList.length || !Number.isFinite(numericYear) || numericYear < 1900 || numericYear > 2100) {
+      return;
+    }
+
+    const normalizedTitleId = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `comic-${Date.now()}`;
+
+    if (adminEditingComicId) {
+      setAdminComics((prev) => prev.map((comic) => {
+        if (comic.titleId !== adminEditingComicId) return comic;
+        return {
+          ...comic,
+          title,
+          author,
+          description,
+          genre: genreList,
+          coverImageUrl: adminComicDraft.coverImageUrl || comic.coverImageUrl,
+          bannerImageUrl: adminComicDraft.bannerImageUrl || comic.bannerImageUrl,
+          releaseYear: numericYear,
+          status: adminComicDraft.status,
+          category: adminComicDraft.category,
+        };
+      }));
+      const updatedComic = adminComics.find((comic) => comic.titleId === adminEditingComicId);
+      if (updatedComic) {
+        void setDoc(doc(db, 'comics', adminEditingComicId), {
+          ...updatedComic,
+          title,
+          author,
+          description,
+          genre: genreList,
+          coverImageUrl: adminComicDraft.coverImageUrl || updatedComic.coverImageUrl,
+          bannerImageUrl: adminComicDraft.bannerImageUrl || updatedComic.bannerImageUrl,
+          releaseYear: numericYear,
+          status: adminComicDraft.status,
+          category: adminComicDraft.category,
+        }).catch((error) => console.error('Comic update failed:', error));
+      }
+      addAdminActivity('comic_updated', `Komik "${title}" diperbarui.`);
+    } else {
+      const newComic: Comic = {
+        titleId: normalizedTitleId,
+        title,
+        author,
+        description,
+        genre: genreList,
+        coverImageUrl: adminComicDraft.coverImageUrl || '/comics/haikyu-vol-1/chapter-01/page-001.jpg',
+        bannerImageUrl: adminComicDraft.bannerImageUrl || '/comics/haikyu-vol-1/chapter-01/page-001.jpg',
+        releaseYear: numericYear,
+        status: adminComicDraft.status,
+        views: 0,
+        category: adminComicDraft.category,
+        chapters: [
+          {
+            id: `${normalizedTitleId}-chapter-01`,
+            chapterNumber: 1,
+            title: 'Chapter 1',
+            releaseDate: new Date().toISOString().slice(0, 10),
+            sourceType: 'images',
+            pageCount: 0,
+            storagePath: `comics/${normalizedTitleId}/chapters/chapter-01`,
+            archiveName: '',
+            pages: [],
+          },
+        ],
+      };
+      setAdminComics((prev) => [newComic, ...prev]);
+      void setDoc(doc(db, 'comics', normalizedTitleId), newComic)
+        .catch((error) => console.error('Comic create failed:', error));
+      setAdminSelectedComicId(normalizedTitleId);
+      addAdminActivity('comic_created', `Komik "${title}" ditambahkan.`);
+    }
+
+    setAdminComicDraft({
+      title: '',
+      author: '',
+      genre: '',
+      description: '',
+      coverImageUrl: '',
+      bannerImageUrl: '',
+      releaseYear: '2026',
+      status: 'Sedang Rilis',
+      category: 'newest',
+    });
+    setAdminEditingComicId(null);
+  };
+
+  const handleAdminEditComic = (comic: Comic) => {
+    setAdminEditingComicId(comic.titleId);
+    setAdminComicDraft({
+      title: comic.title,
+      author: comic.author,
+      genre: comic.genre.join(', '),
+      description: comic.description,
+      coverImageUrl: comic.coverImageUrl,
+      bannerImageUrl: comic.bannerImageUrl,
+      releaseYear: String(comic.releaseYear),
+      status: comic.status,
+      category: comic.category,
+    });
+  };
+
+  const handleAdminDeleteComic = (comic: Comic) => {
+    setAdminDeleteTarget(comic);
+  };
+
+  const confirmAdminDeleteComic = () => {
+    if (!adminDeleteTarget) return;
+    setAdminComics((prev) => prev.filter((comic) => comic.titleId !== adminDeleteTarget.titleId));
+    void deleteDoc(doc(db, 'comics', adminDeleteTarget.titleId))
+      .catch((error) => console.error('Comic delete failed:', error));
+    if (adminSelectedComicId === adminDeleteTarget.titleId && adminComics.length > 1) {
+      setAdminSelectedComicId(adminComics.find((comic) => comic.titleId !== adminDeleteTarget.titleId)?.titleId || '');
+    }
+    addAdminActivity('comic_deleted', `Komik "${adminDeleteTarget.title}" dihapus.`);
+    setAdminDeleteTarget(null);
+  };
+
+  const handleAdminAddChapter = () => {
+    if (!selectedAdminComic) return;
+    const chapterNumber = Number(adminChapterDraft.chapterNumber);
+    const trimmedTitle = adminChapterDraft.title.trim();
+    if (!trimmedTitle || !Number.isFinite(chapterNumber) || chapterNumber <= 0) return;
+
+    const exists = selectedAdminComic.chapters.some((chapter) => chapter.chapterNumber === chapterNumber);
+    if (exists) return;
+
+    const newChapter: ComicChapter = {
+      id: `${selectedAdminComic.titleId}-chapter-${String(chapterNumber).padStart(2, '0')}`,
+      chapterNumber,
+      title: trimmedTitle,
+      releaseDate: adminChapterDraft.releaseDate || new Date().toISOString().slice(0, 10),
+      sourceType: 'images',
+      pageCount: 0,
+      storagePath: `comics/${selectedAdminComic.titleId}/chapters/chapter-${String(chapterNumber).padStart(2, '0')}`,
+      archiveName: '',
+      pages: [],
+    };
+
+    setAdminComics((prev) => prev.map((comic) => {
+      if (comic.titleId !== selectedAdminComic.titleId) return comic;
+      return {
+        ...comic,
+        chapters: [...comic.chapters, newChapter],
+      };
+    }));
+    void setDoc(doc(db, 'comics', selectedAdminComic.titleId), {
+      ...selectedAdminComic,
+      chapters: [...selectedAdminComic.chapters, newChapter],
+    }).catch((error) => console.error('Chapter create failed:', error));
+    addAdminActivity('chapter_created', `Bab ${chapterNumber} ditambahkan ke ${selectedAdminComic.title}.`);
+    setAdminChapterDraft({
+      chapterNumber: '',
+      title: '',
+      releaseDate: new Date().toISOString().slice(0, 10),
+    });
+  };
+
+  const adminStats = useMemo(() => ({
+    totalComics: adminComics.length,
+    totalChapters: adminComics.reduce((count, comic) => count + comic.chapters.length, 0),
+    totalUsers: adminUsers.length,
+    totalViews: adminComics.reduce((count, comic) => count + comic.views, 0),
+  }), [adminComics, adminUsers]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-['Plus_Jakarta_Sans',sans-serif]">
@@ -673,6 +1046,25 @@ export default function App() {
             >
               Lapor Bug
             </button>
+            {isAdmin && (
+              <button
+                id="nav-tab-admin"
+                onClick={() => {
+                  setSelectedComicId(null);
+                  setSelectedComicDetailId(null);
+                  setCurrentTab('admin');
+                  setAdminSection('dashboard');
+                }}
+                className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  currentTab === 'admin'
+                    ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-900'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                Admin
+              </button>
+            )}
           </nav>
 
           {/* User Auth Section */}
@@ -731,6 +1123,7 @@ export default function App() {
               { id: 'history', label: 'Riwayat Baca' },
               { id: 'faq', label: 'Tanya Jawab' },
               { id: 'report', label: 'Lapor Bug / Saran' },
+              ...(isAdmin ? [{ id: 'admin', label: 'Admin Dashboard' }] : []),
             ].map((item) => (
               <button
                 key={item.id}
@@ -931,6 +1324,405 @@ export default function App() {
               </div>
             </motion.div>
           ) : null}
+
+          {/* VIEW ADMIN: DASHBOARD */}
+          {!selectedComicId && !selectedComicDetailId && currentTab === 'admin' && (
+            <motion.div
+              key="tab-admin"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              id="admin-view"
+              className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+            >
+              {!isAdmin ? (
+                <div className="max-w-xl mx-auto rounded-3xl border border-rose-500/30 bg-rose-950/20 p-8 text-center shadow-2xl">
+                  <ShieldAlert className="w-12 h-12 text-rose-400 mx-auto" />
+                  <h1 className="mt-5 text-2xl font-black text-white">Anda tidak memiliki akses ke halaman admin.</h1>
+                  <p className="mt-3 text-sm text-slate-300">Akses admin terbatas untuk akun dengan role administrator. Silakan masuk dengan akun admin untuk melanjutkan.</p>
+                </div>
+              ) : (
+                <div className="grid gap-6 xl:grid-cols-[260px_minmax(0,1fr)]">
+                  <aside className="rounded-3xl border border-slate-800 bg-slate-900/80 p-4 shadow-2xl shadow-blue-950/10">
+                    <div className="flex items-center gap-3 border-b border-slate-800 pb-4 mb-4">
+                      <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-400 flex items-center justify-center text-white font-black">A</div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-blue-300 font-bold">Admin</p>
+                        <h2 className="text-base font-bold text-white">Control Center</h2>
+                      </div>
+                    </div>
+
+                    <nav className="space-y-2">
+                      {[
+                        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+                        { id: 'comics', label: 'Komik', icon: NotebookText },
+                        { id: 'chapters', label: 'Chapter', icon: FileText },
+                        { id: 'users', label: 'User', icon: Users },
+                        { id: 'reports', label: 'Laporan', icon: BarChart3 },
+                        { id: 'settings', label: 'Settings', icon: Settings },
+                      ].map((item) => {
+                        const Icon = item.icon;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => setAdminSection(item.id as AdminSection)}
+                            className={`w-full flex items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-semibold transition-all cursor-pointer ${
+                              adminSection === item.id
+                                ? 'bg-blue-600/20 text-blue-300 border border-blue-500/30'
+                                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                            }`}
+                          >
+                            <Icon className="w-4 h-4" />
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </nav>
+                  </aside>
+
+                  <div className="space-y-6">
+                    {adminSection === 'dashboard' && (
+                      <>
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-[11px] uppercase tracking-[0.2em] text-blue-300 font-black">Overview</p>
+                            <h1 className="text-3xl font-black text-white">Dashboard</h1>
+                          </div>
+                          <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-300">System Online</div>
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                          {[
+                            { label: 'Total Komik', value: adminStats.totalComics, icon: NotebookText, tone: 'text-blue-300' },
+                            { label: 'Total Chapter', value: adminStats.totalChapters, icon: FileText, tone: 'text-violet-300' },
+                            { label: 'Total User', value: adminStats.totalUsers, icon: Users, tone: 'text-emerald-300' },
+                            { label: 'Total Views', value: adminStats.totalViews.toLocaleString('id-ID'), icon: Eye, tone: 'text-amber-300' },
+                          ].map((stat) => {
+                            const Icon = stat.icon;
+                            return (
+                              <div key={stat.label} className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-xs text-slate-400">{stat.label}</p>
+                                  <Icon className={`w-4 h-4 ${stat.tone}`} />
+                                </div>
+                                <p className="mt-4 text-3xl font-black text-white">{stat.value}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="grid gap-6 lg:grid-cols-2">
+                          <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+                            <div className="flex items-center justify-between mb-4">
+                              <h2 className="text-lg font-bold text-white">Komik Terbaru</h2>
+                              <span className="text-[11px] text-slate-500">{adminComics.length} data</span>
+                            </div>
+                            <div className="space-y-3">
+                              {adminComics.slice(0, 4).map((comic) => (
+                                <div key={comic.titleId} className="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+                                  <img src={comic.coverImageUrl} alt={comic.title} className="w-12 h-16 rounded-lg object-cover" />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate font-semibold text-white">{comic.title}</p>
+                                    <p className="text-xs text-slate-400">{comic.author}</p>
+                                  </div>
+                                  <span className="text-[10px] rounded-full bg-blue-500/10 px-2 py-1 text-blue-300">{comic.chapters.length} Bab</span>
+                                </div>
+                              ))}
+                              {adminComics.length === 0 && <div className="rounded-2xl border border-dashed border-slate-700 p-6 text-center text-sm text-slate-400">Belum ada data komik.</div>}
+                            </div>
+                          </div>
+
+                          <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+                            <div className="flex items-center justify-between mb-4">
+                              <h2 className="text-lg font-bold text-white">Aktivitas Terbaru</h2>
+                              <span className="text-[11px] text-slate-500">Log admin</span>
+                            </div>
+                            <div className="space-y-3">
+                              {adminActivity.map((activity) => (
+                                <div key={activity.id} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span className="text-[10px] uppercase tracking-[0.15em] text-blue-300 font-black">{activity.type}</span>
+                                    <span className="text-[10px] text-slate-500">{new Date(activity.timestamp).toLocaleDateString('id-ID')}</span>
+                                  </div>
+                                  <p className="mt-2 text-sm text-slate-200">{activity.message}</p>
+                                </div>
+                              ))}
+                              {adminActivity.length === 0 && <div className="rounded-2xl border border-dashed border-slate-700 p-6 text-center text-sm text-slate-400">Tidak ada aktivitas.</div>}
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {adminSection === 'comics' && (
+                      <div className="space-y-6">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                          <div>
+                            <p className="text-[11px] uppercase tracking-[0.2em] text-blue-300 font-black">Catalog</p>
+                            <h1 className="text-3xl font-black text-white">Kelola Komik</h1>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAdminEditingComicId(null);
+                              setAdminComicDraft({
+                                title: '',
+                                author: '',
+                                genre: '',
+                                description: '',
+                                coverImageUrl: '',
+                                bannerImageUrl: '',
+                                releaseYear: '2026',
+                                status: 'Sedang Rilis',
+                                category: 'newest',
+                              });
+                            }}
+                            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-900/20 cursor-pointer"
+                          >
+                            <Plus className="w-4 h-4" />
+                            Tambah Komik
+                          </button>
+                        </div>
+
+                        <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+                          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                            <div className="md:col-span-2 xl:col-span-2">
+                              <label className="block text-xs font-semibold text-slate-400 mb-2">Cari komik</label>
+                              <input
+                                value={adminComicSearch}
+                                onChange={(event) => setAdminComicSearch(event.target.value)}
+                                placeholder="Cari judul, author, genre..."
+                                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white placeholder:text-slate-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-400 mb-2">Status</label>
+                              <select
+                                value={adminComicStatus}
+                                onChange={(event) => setAdminComicStatus(event.target.value as 'Semua' | Comic['status'])}
+                                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white"
+                              >
+                                <option value="Semua">Semua</option>
+                                <option value="Tamat">Tamat</option>
+                                <option value="Sedang Rilis">Sedang Rilis</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap items-center gap-3">
+                            <span className="text-xs text-slate-400">Urutkan</span>
+                            <select
+                              value={adminComicSort}
+                              onChange={(event) => setAdminComicSort(event.target.value as 'newest' | 'oldest' | 'az' | 'za')}
+                              className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white"
+                            >
+                              <option value="newest">Terbaru</option>
+                              <option value="oldest">Terlama</option>
+                              <option value="az">A-Z</option>
+                              <option value="za">Z-A</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+                          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+                            <div className="space-y-3">
+                              {adminList.length === 0 ? (
+                                <div className="rounded-2xl border border-dashed border-slate-700 p-8 text-center text-sm text-slate-400">Tidak ada komik yang cocok dengan filter saat ini.</div>
+                              ) : (
+                                <div className="space-y-3">
+                                  {adminList.map((comic) => (
+                                    <div key={comic.titleId} className="flex gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+                                      <img src={comic.coverImageUrl} alt={comic.title} className="w-16 h-20 rounded-lg object-cover" />
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="min-w-0">
+                                            <p className="truncate font-bold text-white">{comic.title}</p>
+                                            <p className="text-xs text-slate-400">{comic.author}</p>
+                                          </div>
+                                          <span className="rounded-full bg-blue-500/10 px-2 py-1 text-[10px] font-bold text-blue-300">{comic.status}</span>
+                                        </div>
+                                        <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-400">
+                                          <span>{comic.genre.join(', ')}</span>
+                                          <span>•</span>
+                                          <span>{comic.releaseYear}</span>
+                                          <span>•</span>
+                                          <span>{comic.views.toLocaleString('id-ID')} views</span>
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                          <button type="button" onClick={() => handleAdminEditComic(comic)} className="rounded-lg bg-white/5 px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 hover:bg-white/10 cursor-pointer"><Pencil className="w-3 h-3 inline mr-1" />Edit</button>
+                                          <button type="button" onClick={() => setAdminSelectedComicId(comic.titleId)} className="rounded-lg bg-blue-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-blue-300 hover:bg-blue-500/20 cursor-pointer">Manage Chapters</button>
+                                          <button type="button" onClick={() => handleAdminDeleteComic(comic)} className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-rose-300 hover:bg-rose-500/20 cursor-pointer"><Trash2 className="w-3 h-3 inline mr-1" />Delete</button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                              <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-base font-bold text-white">{adminEditingComicId ? 'Edit Komik' : 'Tambah Komik'}</h3>
+                              </div>
+                              <div className="grid gap-3">
+                                <input value={adminComicDraft.title} onChange={(event) => setAdminComicDraft((prev) => ({ ...prev, title: event.target.value }))} placeholder="Judul" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+                                <input value={adminComicDraft.author} onChange={(event) => setAdminComicDraft((prev) => ({ ...prev, author: event.target.value }))} placeholder="Author" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+                                <input value={adminComicDraft.genre} onChange={(event) => setAdminComicDraft((prev) => ({ ...prev, genre: event.target.value }))} placeholder="Genre (pisahkan dengan koma)" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+                                <textarea value={adminComicDraft.description} onChange={(event) => setAdminComicDraft((prev) => ({ ...prev, description: event.target.value }))} placeholder="Deskripsi" rows={4} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <input value={adminComicDraft.coverImageUrl} onChange={(event) => setAdminComicDraft((prev) => ({ ...prev, coverImageUrl: event.target.value }))} placeholder="Cover URL" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+                                  <input value={adminComicDraft.bannerImageUrl} onChange={(event) => setAdminComicDraft((prev) => ({ ...prev, bannerImageUrl: event.target.value }))} placeholder="Banner URL" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+                                </div>
+                                <div className="grid gap-3 sm:grid-cols-3">
+                                  <input value={adminComicDraft.releaseYear} onChange={(event) => setAdminComicDraft((prev) => ({ ...prev, releaseYear: event.target.value }))} placeholder="Tahun" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+                                  <select value={adminComicDraft.status} onChange={(event) => setAdminComicDraft((prev) => ({ ...prev, status: event.target.value as Comic['status'] }))} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
+                                    <option value="Sedang Rilis">Sedang Rilis</option>
+                                    <option value="Tamat">Tamat</option>
+                                  </select>
+                                  <select value={adminComicDraft.category} onChange={(event) => setAdminComicDraft((prev) => ({ ...prev, category: event.target.value as Comic['category'] }))} className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white">
+                                    <option value="newest">Baru</option>
+                                    <option value="oldest">Klasik</option>
+                                    <option value="popular">Populer</option>
+                                  </select>
+                                </div>
+                                <button type="button" onClick={handleAdminSubmitComic} className="mt-2 rounded-xl bg-green-600 px-4 py-2.5 text-sm font-bold text-white cursor-pointer">{adminEditingComicId ? 'Simpan Perubahan' : 'Simpan Komik'}</button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {adminSection === 'chapters' && selectedAdminComic && (
+                      <div className="space-y-6">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                          <div>
+                            <p className="text-[11px] uppercase tracking-[0.2em] text-blue-300 font-black">Management</p>
+                            <h1 className="text-3xl font-black text-white">Kelola Chapter</h1>
+                          </div>
+                          <select value={adminSelectedComicId} onChange={(event) => setAdminSelectedComicId(event.target.value)} className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
+                            {adminComics.map((comic) => (
+                              <option key={comic.titleId} value={comic.titleId}>{comic.title}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]">
+                          <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+                            <div className="mb-4 flex items-center justify-between">
+                              <h2 className="text-lg font-bold text-white">{selectedAdminComic.title}</h2>
+                              <span className="text-xs text-slate-400">{selectedAdminComic.chapters.length} chapter</span>
+                            </div>
+                            <div className="space-y-3">
+                              {selectedAdminComic.chapters.map((chapter) => (
+                                <div key={chapter.id} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                      <p className="text-[11px] uppercase tracking-[0.15em] text-blue-300 font-black">Chapter {chapter.chapterNumber}</p>
+                                      <h3 className="mt-1 text-base font-bold text-white">{chapter.title}</h3>
+                                      <p className="mt-1 text-xs text-slate-400">{chapter.releaseDate}</p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 text-[11px]">
+                                      <span className="rounded-full bg-white/5 px-2 py-1 text-slate-300">{chapter.pageCount ?? chapter.pages.length} halaman</span>
+                                      <span className="rounded-full bg-violet-500/10 px-2 py-1 text-violet-300">{chapter.sourceType ?? 'images'}</span>
+                                    </div>
+                                  </div>
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    <button type="button" className="rounded-lg bg-white/5 px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 cursor-pointer">Edit</button>
+                                    <button type="button" className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-rose-300 cursor-pointer">Delete</button>
+                                    <button type="button" className="rounded-lg bg-blue-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-blue-300 cursor-pointer">Manage Pages</button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                            <h3 className="text-base font-bold text-white">Tambah Chapter</h3>
+                            <div className="mt-4 space-y-3">
+                              <input value={adminChapterDraft.chapterNumber} onChange={(event) => setAdminChapterDraft((prev) => ({ ...prev, chapterNumber: event.target.value }))} placeholder="Chapter Number" className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+                              <input value={adminChapterDraft.title} onChange={(event) => setAdminChapterDraft((prev) => ({ ...prev, title: event.target.value }))} placeholder="Judul Chapter" className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+                              <input type="date" value={adminChapterDraft.releaseDate} onChange={(event) => setAdminChapterDraft((prev) => ({ ...prev, releaseDate: event.target.value }))} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white" />
+                              <div className="rounded-2xl border border-dashed border-blue-500/30 bg-blue-500/5 p-3 text-xs text-slate-300">
+                                <p className="font-bold text-blue-300">CBZ Upload — Coming Soon</p>
+                                <p className="mt-1">Arsitektur chapter sudah disiapkan dengan fields <span className="font-semibold text-white">sourceType</span>, <span className="font-semibold text-white">pageCount</span>, dan <span className="font-semibold text-white">storagePath</span> untuk kompatibilitas masa depan.</p>
+                              </div>
+                              <button type="button" onClick={handleAdminAddChapter} className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white cursor-pointer">Simpan Chapter</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {adminSection === 'users' && (
+                      <div className="space-y-6">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.2em] text-blue-300 font-black">User</p>
+                          <h1 className="text-3xl font-black text-white">User Management</h1>
+                        </div>
+                        <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+                          <div className="space-y-3">
+                            {adminUsers.map((user) => (
+                              <div key={user.userId} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+                                <div className="flex items-center gap-3">
+                                  <img src={user.avatarUrl} alt={user.username} className="w-12 h-12 rounded-full border border-slate-700" />
+                                  <div>
+                                    <p className="font-bold text-white">{user.displayName}</p>
+                                    <p className="text-xs text-slate-400">@{user.username}</p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${user.role === 'admin' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-blue-500/10 text-blue-300'}`}>{user.role || 'user'}</span>
+                                  <p className="mt-1 text-[10px] text-slate-500">{new Date(user.createdAt).toLocaleDateString('id-ID')}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {adminSection === 'reports' && (
+                      <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-8 text-center">
+                        <BarChart3 className="w-12 h-12 text-slate-500 mx-auto" />
+                        <h1 className="mt-4 text-2xl font-black text-white">Laporan</h1>
+                        <p className="mt-3 text-sm text-slate-300">Fitur laporan admin akan terus dikembangkan. Saat ini statusnya masih <span className="font-semibold text-blue-300">Coming Soon</span>.</p>
+                      </div>
+                    )}
+
+                    {adminSection === 'settings' && (
+                      <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-8 text-center">
+                        <Settings className="w-12 h-12 text-slate-500 mx-auto" />
+                        <h1 className="mt-4 text-2xl font-black text-white">Settings</h1>
+                        <p className="mt-3 text-sm text-slate-300">Pengaturan admin dan keamanan akan ditambahkan di tahap berikutnya. Saat ini masih dalam status <span className="font-semibold text-blue-300">Coming Soon</span>.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {adminDeleteTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+                  <div className="w-full max-w-md rounded-3xl border border-rose-500/30 bg-slate-900 p-6 shadow-2xl">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-rose-300 font-black">Konfirmasi Hapus</p>
+                    <h3 className="mt-3 text-2xl font-black text-white">Hapus komik ini?</h3>
+                    <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                      <p className="font-bold text-white">{adminDeleteTarget.title}</p>
+                      <p className="mt-2 text-xs text-slate-400">Jumlah chapter: {adminDeleteTarget.chapters.length}</p>
+                    </div>
+                    <p className="mt-4 text-sm text-slate-300">Tindakan ini tidak dapat dibatalkan.</p>
+                    <div className="mt-6 flex justify-end gap-3">
+                      <button type="button" onClick={() => setAdminDeleteTarget(null)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800 cursor-pointer">Batal</button>
+                      <button type="button" onClick={confirmAdminDeleteComic} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-bold text-white hover:bg-rose-500 cursor-pointer">Hapus</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
 
           {/* VIEW A: DETAIL / WEBTOON READER */}
           {selectedComicId && activeComic ? (
@@ -1300,7 +2092,7 @@ export default function App() {
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6">
-                {MOCK_COMICS.map((comic) => (
+                {catalogComics.map((comic) => (
                   <div
                     key={comic.titleId}
                     id={`home-card-${comic.titleId}`}
@@ -1470,7 +2262,7 @@ export default function App() {
 
             {/* Comic Grid */}
             <p className="text-xs text-slate-400">
-              Menampilkan <span className="font-bold text-slate-200">{filteredComics.length}</span> dari {MOCK_COMICS.length} komik
+              Menampilkan <span className="font-bold text-slate-200">{filteredComics.length}</span> dari {catalogComics.length} komik
             </p>
             {filteredComics.length === 0 ? (
               <div className="p-12 text-center bg-slate-900/50 border border-slate-800 rounded-2xl space-y-3">

@@ -73,12 +73,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (data.password && data.password !== passwordHash) {
           return { success: false, error: 'Password salah untuk username ini.' };
         }
+        const role = data.role === 'admin' ? 'admin' : 'user';
         profile = {
           userId: data.userId || userId,
           username: data.username || cleanUsername,
           displayName: data.displayName || username,
           avatarUrl: data.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanUsername}`,
           createdAt: data.createdAt || Date.now(),
+          role,
         };
       } else {
         // Create new simulated account
@@ -88,10 +90,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           displayName: username,
           avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanUsername}`,
           createdAt: Date.now(),
+          role: 'user',
         };
         await setDoc(userRef, {
           ...profile,
-          password: passwordHash, // stored simply for simulated mock verification
+          password: passwordHash, // kept for simulated verification only
         });
       }
 
