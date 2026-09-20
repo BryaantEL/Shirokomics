@@ -129,6 +129,28 @@ const makeTwinLadyPages = (
     };
   });
 
+
+const makeRemarriedEmpressPages = (
+  chapterNumber: number,
+  pageCount: number
+) =>
+  Array.from({ length: pageCount }, (_, index) => {
+    const pageNumber = index + 1;
+    const pageFile = String(pageNumber).padStart(3, "0");
+
+    return {
+      panelNumber: pageNumber,
+      dialogue: "",
+      actionDescription: "",
+      bgColor: "#000000",
+      accentColor: "#7c3aed",
+      imageUrl: `/comics/the-second-marriage-the-remarried-empress/chapter-${String(
+        chapterNumber
+      ).padStart(2, "0")}/page-${pageFile}.jpg`,
+    };
+  });
+
+
 export const MOCK_COMICS: Comic[] = [
   {
     titleId: "the-cursed-face",
@@ -297,6 +319,94 @@ export const MOCK_COMICS: Comic[] = [
         title: "Chapter 7",
         releaseDate: "20 Sep 2026",
         pages: makeTwinLadyPages(7, 98),
+      },
+    ],
+  },
+    {
+    titleId: "the-second-marriage-the-remarried-empress",
+    title: "The Second Marriage (The Remarried Empress)",
+    genre: ["Romance", "Fantasy"],
+    description:
+      "The Second Marriage (The Remarried Empress) — komik dengan 10 chapter dan total 672 halaman.",
+    coverImageUrl:
+      "/comics/the-second-marriage-the-remarried-empress/chapter-01/page-001.jpg",
+    bannerImageUrl:
+      "/comics/the-second-marriage-the-remarried-empress/chapter-01/page-001.jpg",
+    author: "Unknown",
+    releaseYear: 2026,
+    status: "Sedang Rilis",
+    views: 0,
+    category: "newest",
+    chapters: [
+      {
+        id: "the-second-marriage-the-remarried-empress-chapter-01",
+        chapterNumber: 1,
+        title: "Chapter 1",
+        releaseDate: "21 Sep 2026",
+        pages: makeRemarriedEmpressPages(1, 58),
+      },
+      {
+        id: "the-second-marriage-the-remarried-empress-chapter-02",
+        chapterNumber: 2,
+        title: "Chapter 2",
+        releaseDate: "21 Sep 2026",
+        pages: makeRemarriedEmpressPages(2, 60),
+      },
+      {
+        id: "the-second-marriage-the-remarried-empress-chapter-03",
+        chapterNumber: 3,
+        title: "Chapter 3",
+        releaseDate: "21 Sep 2026",
+        pages: makeRemarriedEmpressPages(3, 51),
+      },
+      {
+        id: "the-second-marriage-the-remarried-empress-chapter-04",
+        chapterNumber: 4,
+        title: "Chapter 4",
+        releaseDate: "21 Sep 2026",
+        pages: makeRemarriedEmpressPages(4, 71),
+      },
+      {
+        id: "the-second-marriage-the-remarried-empress-chapter-05",
+        chapterNumber: 5,
+        title: "Chapter 5",
+        releaseDate: "21 Sep 2026",
+        pages: makeRemarriedEmpressPages(5, 64),
+      },
+      {
+        id: "the-second-marriage-the-remarried-empress-chapter-06",
+        chapterNumber: 6,
+        title: "Chapter 6",
+        releaseDate: "21 Sep 2026",
+        pages: makeRemarriedEmpressPages(6, 65),
+      },
+      {
+        id: "the-second-marriage-the-remarried-empress-chapter-07",
+        chapterNumber: 7,
+        title: "Chapter 7",
+        releaseDate: "21 Sep 2026",
+        pages: makeRemarriedEmpressPages(7, 66),
+      },
+      {
+        id: "the-second-marriage-the-remarried-empress-chapter-08",
+        chapterNumber: 8,
+        title: "Chapter 8",
+        releaseDate: "21 Sep 2026",
+        pages: makeRemarriedEmpressPages(8, 106),
+      },
+      {
+        id: "the-second-marriage-the-remarried-empress-chapter-09",
+        chapterNumber: 9,
+        title: "Chapter 9",
+        releaseDate: "21 Sep 2026",
+        pages: makeRemarriedEmpressPages(9, 61),
+      },
+      {
+        id: "the-second-marriage-the-remarried-empress-chapter-10",
+        chapterNumber: 10,
+        title: "Chapter 10",
+        releaseDate: "21 Sep 2026",
+        pages: makeRemarriedEmpressPages(10, 70),
       },
     ],
   },
