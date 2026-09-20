@@ -230,7 +230,7 @@ export const MOCK_COMICS: Comic[] = [
         pages: makeHaikyuPages(184, 202),
       },
     ],
-  },,
+  },
 
   {
     titleId: "the-reason-for-the-twin-ladys-disguise",
