@@ -103,76 +103,6 @@ type AdminChapterEditDraft = {
   releaseDate: string;
 };
 
-
-interface LazyReaderImageProps {
-  src: string;
-  alt: string;
-  priority?: boolean;
-}
-
-function LazyReaderImage({
-  src,
-  alt,
-  priority = false,
-}: LazyReaderImageProps) {
-  const [shouldLoad, setShouldLoad] = useState(priority);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (shouldLoad) return;
-
-    const element = containerRef.current;
-    if (!element) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          setShouldLoad(true);
-          observer.disconnect();
-        }
-      },
-      {
-        rootMargin: "1200px 0px",
-        threshold: 0,
-      }
-    );
-
-    observer.observe(element);
-
-    return () => observer.disconnect();
-  }, [shouldLoad]);
-
-  return (
-    <div
-      ref={containerRef}
-      className="w-full bg-black"
-      style={{
-        contentVisibility: "auto",
-        containIntrinsicSize: "900px",
-      }}
-    >
-      {shouldLoad ? (
-        <img
-          src={src}
-          alt={alt}
-          className="block w-full h-auto max-w-full select-none"
-          loading={priority ? "eager" : "lazy"}
-          fetchPriority={priority ? "high" : "low"}
-          decoding="async"
-          draggable={false}
-          referrerPolicy="no-referrer"
-        />
-      ) : (
-        <div
-          className="w-full bg-black"
-          style={{ minHeight: "420px" }}
-          aria-hidden="true"
-        />
-      )}
-    </div>
-  );
-}
-
 interface ResumeState {
   scrollY: number;
   progress: number;
@@ -2134,22 +2064,23 @@ export default function App() {
                 onClick={() => setReaderControlsVisible((v) => !v)}
               >
                 {activeChapter?.pages.map((page, index) => (
-    <figure
-      key={page.panelNumber}
-      id={`comic-panel-${page.panelNumber}`}
-      className="relative m-0 p-0 bg-black"
-      style={{
-        contentVisibility: "auto",
-        containIntrinsicSize: "900px",
-      }}
-    >
-      <LazyReaderImage
-        src={page.imageUrl || activeComic.coverImageUrl}
-        alt={`Panel ${page.panelNumber} - ${activeComic.title}`}
-        priority={index === 0}
-      />
-    </figure>
-  ))}
+                  <figure
+                    key={page.panelNumber}
+                    id={`comic-panel-${page.panelNumber}`}
+                    className="relative m-0 p-0 bg-black"
+                  >
+                    <img
+                      src={page.imageUrl || activeComic.coverImageUrl}
+                      alt={`Panel ${page.panelNumber} - ${activeComic.title}`}
+                      className="block w-full h-auto max-w-full select-none"
+                      loading={index < 2 ? "eager" : "lazy"}
+                      fetchPriority={index < 2 ? "high" : "auto"}
+                      decoding="async"
+                      draggable={false}
+                      referrerPolicy="no-referrer"
+                    />
+                  </figure>
+                ))}
               </div>
 
               {/* Reader footer */}
