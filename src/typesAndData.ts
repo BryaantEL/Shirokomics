@@ -108,6 +108,27 @@ const makeHaikyuPages = (startScanPage: number, endScanPage: number) =>
     };
   });
 
+
+const makeTwinLadyPages = (
+  chapterNumber: number,
+  pageCount: number
+) =>
+  Array.from({ length: pageCount }, (_, index) => {
+    const pageNumber = index + 1;
+    const pageFile = String(pageNumber).padStart(3, "0");
+
+    return {
+      panelNumber: pageNumber,
+      dialogue: "",
+      actionDescription: "",
+      bgColor: "#000000",
+      accentColor: "#2563eb",
+      imageUrl: `/comics/the-reason-for-the-twin-ladys-disguise/chapter-${String(
+        chapterNumber
+      ).padStart(2, "0")}/page-${pageFile}.jpg`,
+    };
+  });
+
 export const MOCK_COMICS: Comic[] = [
   {
     titleId: "the-cursed-face",
@@ -207,6 +228,75 @@ export const MOCK_COMICS: Comic[] = [
         title: "Kata-Kata dari Mereka yang Tak Memiliki",
         releaseDate: "15 Sep 2026",
         pages: makeHaikyuPages(184, 202),
+      },
+    ],
+  },,
+
+  {
+    titleId: "the-reason-for-the-twin-ladys-disguise",
+    title: "The Reason for the Twin Lady's Disguise",
+    genre: ["Romance", "Drama", "Fantasy"],
+    description:
+      "The Reason for the Twin Lady's Disguise adalah komik bergenre Romance, Drama, dan Fantasy yang disajikan dalam 7 chapter.",
+    coverImageUrl:
+      "/comics/the-reason-for-the-twin-ladys-disguise/chapter-01/page-001.jpg",
+    bannerImageUrl:
+      "/comics/the-reason-for-the-twin-ladys-disguise/chapter-01/page-001.jpg",
+    author: "Amamiya Ley",
+    releaseYear: 2026,
+    status: "Sedang Rilis",
+    views: 0,
+    category: "newest",
+
+    chapters: [
+      {
+        id: "the-reason-for-the-twin-ladys-disguise-chapter-01",
+        chapterNumber: 1,
+        title: "Chapter 1",
+        releaseDate: "20 Sep 2026",
+        pages: makeTwinLadyPages(1, 145),
+      },
+      {
+        id: "the-reason-for-the-twin-ladys-disguise-chapter-02",
+        chapterNumber: 2,
+        title: "Chapter 2",
+        releaseDate: "20 Sep 2026",
+        pages: makeTwinLadyPages(2, 144),
+      },
+      {
+        id: "the-reason-for-the-twin-ladys-disguise-chapter-03",
+        chapterNumber: 3,
+        title: "Chapter 3",
+        releaseDate: "20 Sep 2026",
+        pages: makeTwinLadyPages(3, 100),
+      },
+      {
+        id: "the-reason-for-the-twin-ladys-disguise-chapter-04",
+        chapterNumber: 4,
+        title: "Chapter 4",
+        releaseDate: "20 Sep 2026",
+        pages: makeTwinLadyPages(4, 119),
+      },
+      {
+        id: "the-reason-for-the-twin-ladys-disguise-chapter-05",
+        chapterNumber: 5,
+        title: "Chapter 5",
+        releaseDate: "20 Sep 2026",
+        pages: makeTwinLadyPages(5, 93),
+      },
+      {
+        id: "the-reason-for-the-twin-ladys-disguise-chapter-06",
+        chapterNumber: 6,
+        title: "Chapter 6",
+        releaseDate: "20 Sep 2026",
+        pages: makeTwinLadyPages(6, 88),
+      },
+      {
+        id: "the-reason-for-the-twin-ladys-disguise-chapter-07",
+        chapterNumber: 7,
+        title: "Chapter 7",
+        releaseDate: "20 Sep 2026",
+        pages: makeTwinLadyPages(7, 98),
       },
     ],
   },
