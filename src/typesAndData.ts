@@ -151,7 +151,129 @@ const makeRemarriedEmpressPages = (
   });
 
 
+
+const makeCountsFamilyPages = (
+  chapterNumber: number,
+  pageCount: number
+) =>
+  Array.from({ length: pageCount }, (_, index) => {
+    const pageNumber = index + 1;
+    const pageFile = String(pageNumber).padStart(3, "0");
+
+    return {
+      panelNumber: pageNumber,
+      dialogue: "",
+      actionDescription: "",
+      bgColor: "#000000",
+      accentColor: "#7c3aed",
+      imageUrl: `/comics/lout-of-the-counts-family/chapter-${String(
+        chapterNumber
+      ).padStart(2, "0")}/page-${pageFile}.jpg`,
+    };
+  });
+
 export const MOCK_COMICS: Comic[] = [
+  {
+    titleId: "lout-of-the-counts-family",
+    title: "Lout Of The Counts Family",
+    genre: ["Fantasy", "Romance"],
+    description:
+      "Lout Of The Counts Family — komik dengan 12 chapter dan total 906 halaman.",
+    coverImageUrl: "/comics/lout-of-the-counts-family/poster.jpg",
+    bannerImageUrl: "/comics/lout-of-the-counts-family/banner.jpg",
+    author: "Unknown",
+    releaseYear: 2026,
+    status: "Sedang Rilis",
+    views: 0,
+    category: "newest",
+    chapters: [
+      {
+        id: "lout-of-the-counts-family-chapter-01",
+        chapterNumber: 1,
+        title: "Prolog",
+        releaseDate: "6 Oct 2026",
+        pages: makeCountsFamilyPages(1, 82),
+      },
+      {
+        id: "lout-of-the-counts-family-chapter-02",
+        chapterNumber: 2,
+        title: "Episode 1",
+        releaseDate: "6 Oct 2026",
+        pages: makeCountsFamilyPages(2, 67),
+      },
+      {
+        id: "lout-of-the-counts-family-chapter-03",
+        chapterNumber: 3,
+        title: "Episode 2",
+        releaseDate: "6 Oct 2026",
+        pages: makeCountsFamilyPages(3, 69),
+      },
+      {
+        id: "lout-of-the-counts-family-chapter-04",
+        chapterNumber: 4,
+        title: "Episode 3",
+        releaseDate: "6 Oct 2026",
+        pages: makeCountsFamilyPages(4, 72),
+      },
+      {
+        id: "lout-of-the-counts-family-chapter-05",
+        chapterNumber: 5,
+        title: "Episode 4",
+        releaseDate: "6 Oct 2026",
+        pages: makeCountsFamilyPages(5, 60),
+      },
+      {
+        id: "lout-of-the-counts-family-chapter-06",
+        chapterNumber: 6,
+        title: "Episode 5",
+        releaseDate: "6 Oct 2026",
+        pages: makeCountsFamilyPages(6, 59),
+      },
+      {
+        id: "lout-of-the-counts-family-chapter-07",
+        chapterNumber: 7,
+        title: "Episode 6",
+        releaseDate: "6 Oct 2026",
+        pages: makeCountsFamilyPages(7, 67),
+      },
+      {
+        id: "lout-of-the-counts-family-chapter-08",
+        chapterNumber: 8,
+        title: "Episode 7",
+        releaseDate: "6 Oct 2026",
+        pages: makeCountsFamilyPages(8, 89),
+      },
+      {
+        id: "lout-of-the-counts-family-chapter-09",
+        chapterNumber: 9,
+        title: "Episode 8",
+        releaseDate: "6 Oct 2026",
+        pages: makeCountsFamilyPages(9, 81),
+      },
+      {
+        id: "lout-of-the-counts-family-chapter-10",
+        chapterNumber: 10,
+        title: "Episode 9",
+        releaseDate: "6 Oct 2026",
+        pages: makeCountsFamilyPages(10, 78),
+      },
+      {
+        id: "lout-of-the-counts-family-chapter-11",
+        chapterNumber: 11,
+        title: "Episode 10",
+        releaseDate: "6 Oct 2026",
+        pages: makeCountsFamilyPages(11, 83),
+      },
+      {
+        id: "lout-of-the-counts-family-chapter-12",
+        chapterNumber: 12,
+        title: "Episode 11",
+        releaseDate: "6 Oct 2026",
+        pages: makeCountsFamilyPages(12, 99),
+      }
+    ],
+  },
+
   {
     titleId: "the-cursed-face",
     title: "THE CURSED FACE",
